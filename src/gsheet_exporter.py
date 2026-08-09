@@ -61,7 +61,7 @@ def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> 
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Asistente Compacto WTC y desempate inteligente.
+    con Matriz 5x5, Asistente Compacto WTC y lógica de sacrificio corregida.
     """
     client = get_gspread_client()
     
@@ -136,7 +136,9 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
                 spec_score = eval_matrix.get(m_name, {}).get('score', 0)
                 glob_score = lanzas_global_net[m_name]
                 lanzas1.append((m_name, spec_score, glob_score))
-            lanzas1.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                
+            # Ordenar por spec_score DESCENDENTE (x[1]), y desempate glob_score ASCENDENTE (x[2]) para sacrificar al de menos verdes
+            lanzas1.sort(key=lambda x: (x[1], -x[2]), reverse=True)
             best_two_names = sorted([lanzas1[0][0], lanzas1[1][0]])
             rival_best_tanda1[r_nick] = f"{best_two_names[0]} y {best_two_names[1]}"
 
@@ -179,7 +181,7 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         matrix_rows.append(["[OFERTA 1A] Su Defensor -> Nuestras Lanzas", "", "[OFERTA 1B] Nuestro Defensor #1 Alzu -> Sus Atacantes"])
         matrix_rows.append(["1️⃣ Defensor Rival #1 revelado:", r0, "• Atacante Rival #1A para Alzu:", r1])
         matrix_rows.append(["💡 Nuestras 2 Lanzas recomendadas:", formula1, "• Atacante Rival #1B para Alzu:", r2])
-        matrix_rows.append(["2️⃣ ¿Qué Lanza aceptó el rival?:", "Marc", "💡 Recomendación para Alzu:", '=IF(D14="", "Esperando asignación", "🛡️ Recomendado: " & D14)'])
+        matrix_rows.append(["2️⃣ ¿Qué Lanza aceptó el rival?:", "Koli", "💡 Recomendación para Alzu:", '=IF(D14="", "Esperando asignación", "🛡️ Recomendado: " & D14)'])
         matrix_rows.append(["", "", "3️⃣ Atacante Rival aceptado para Alzu (Cruce 2):", r1])
         
         matrix_rows.append([])
@@ -187,7 +189,7 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         matrix_rows.append(["[OFERTA 2A] Su Defensor #2 -> Lanzas Restantes", "", "[OFERTA 2B] Nuestro Defensor #2 Ander -> Sus Atacantes"])
         matrix_rows.append(["4️⃣ Defensor Rival #2 revelado:", r3, "• Atacante Rival #2A para Ander:", r3])
         matrix_rows.append(["💡 Lanzas disponibles Tanda 2:", formula2, "• Atacante Rival #2B para Ander:", r4])
-        matrix_rows.append(["5️⃣ ¿Qué Lanza aceptó el rival?:", "Koli", "💡 Recomendación para Ander:", '=IF(D21="", "Esperando asignación", "🛡️ Recomendado: " & D21)'])
+        matrix_rows.append(["5️⃣ ¿Qué Lanza aceptó el rival?:", "Marc", "💡 Recomendación para Ander:", '=IF(D21="", "Esperando asignación", "🛡️ Recomendado: " & D21)'])
         matrix_rows.append(["", "", "6️⃣ Atacante Rival aceptado para Ander (Cruce 4):", r3])
         
         matrix_rows.append(["⚡ Cruce 5 (Automático por descarte final):", formula5])
@@ -222,6 +224,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con desempate inteligente de Lanzas!")
+    print(f"\n[SUCCESS] Google Sheet creado con lógica de sacrificio WTC!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url

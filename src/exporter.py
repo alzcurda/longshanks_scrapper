@@ -30,7 +30,7 @@ def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> 
 def export_to_excel(event_id: str, event_data: dict, output_filename: str = None) -> str:
     """
     Genera un libro de Excel (.xlsx) interactivo con el ASISTENTE BIDIRECCIONAL COMPLETO WTC:
-    - Desempate mejorado: si dos Lanzas empatan contra un defensor rival, desempata la Lanza con mayor Net Score global (más 🟢).
+    - Criterio de Sacrificio WTC: Si dos Lanzas empatan contra un defensor rival, se ofrece a la Lanza con MENOS verdes globales (sacrificado) para RESERVAR a la Lanza con MÁS verdes globales para la Tanda 2.
     """
     if not output_filename:
         output_filename = os.path.join(OUTPUT_DIR, f"event_{event_id}_listas.xlsx")
@@ -150,7 +150,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=3, column=1, value="No se encontraron datos para este equipo.").font = font_normal
             continue
 
-        # Precalcular puntajes globales Net de las Lanzas contra todo este equipo rival
         lanzas_global_net = {m: 0 for m in lanzas_list}
         for p_data in players_data:
             eval_matrix = evaluate_5x5_matrix(p_data)
@@ -173,17 +172,18 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             
             eval_matrix = evaluate_5x5_matrix(p_data)
             
-            # Buscar las 2 mejores lanzas (entre Marc, Koli, Ale) ordenando por:
-            # 1. Puntuación contra este defensor específico
-            # 2. Desempate por Net Score global del jugador contra el equipo rival
+            # Criterio táctico WTC:
+            # 1. Mayor puntuación específica contra este defensor rival.
+            # 2. Desempate: Menor puntaje global (sacrificar al que tiene MENOS verdes y RESERVAR al que tiene MÁS verdes para la Tanda 2).
             lanzas1 = []
             for m_name in lanzas_list:
                 spec_score = eval_matrix.get(m_name, {}).get('score', 0)
                 glob_score = lanzas_global_net[m_name]
                 lanzas1.append((m_name, spec_score, glob_score))
-            lanzas1.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                
+            # Ordenar por spec_score DESCENDENTE (x[1]), y desempate glob_score ASCENDENTE (x[2])
+            lanzas1.sort(key=lambda x: (x[1], -x[2]), reverse=True)
             
-            # Ordenar alfabéticamente los 2 nombres para presentación limpia
             best_two_names = sorted([lanzas1[0][0], lanzas1[1][0]])
             rival_best_tanda1[r_nick] = f"{best_two_names[0]} y {best_two_names[1]}"
 
@@ -281,7 +281,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r1_atk2.font = font_bold; c_r1_atk2.fill = fill_interactive_box; c_r1_atk2.alignment = align_center; c_r1_atk2.border = border_header
 
         ws_team.cell(row=16, column=1, value="2️⃣ ¿Qué Lanza aceptó el rival?:").font = font_interactive
-        c_m_lan1_pick = ws_team.cell(row=16, column=2, value="Marc")
+        c_m_lan1_pick = ws_team.cell(row=16, column=2, value="Koli")
         c_m_lan1_pick.font = font_bold; c_m_lan1_pick.fill = fill_interactive_box; c_m_lan1_pick.alignment = align_center; c_m_lan1_pick.border = border_header
 
         ws_team.cell(row=16, column=3, value="💡 Recomendación para Alzu:").font = font_interactive
@@ -316,7 +316,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r2_atk2.font = font_bold; c_r2_atk2.fill = fill_interactive_box; c_r2_atk2.alignment = align_center; c_r2_atk2.border = border_header
 
         ws_team.cell(row=23, column=1, value="5️⃣ ¿Qué Lanza aceptó el rival?:").font = font_interactive
-        c_m_lan2_pick = ws_team.cell(row=23, column=2, value="Koli")
+        c_m_lan2_pick = ws_team.cell(row=23, column=2, value="Marc")
         c_m_lan2_pick.font = font_bold; c_m_lan2_pick.fill = fill_interactive_box; c_m_lan2_pick.alignment = align_center; c_m_lan2_pick.border = border_header
 
         ws_team.cell(row=23, column=3, value="💡 Recomendación para Ander:").font = font_interactive
@@ -394,5 +394,5 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.column_dimensions[col_letter].width = 44
 
     wb.save(output_filename)
-    print(f"[+] Libro Excel con desempate de Lanzas guardado en: {output_filename}")
+    print(f"[+] Libro Excel con criterio de sacrificio WTC guardado en: {output_filename}")
     return output_filename
