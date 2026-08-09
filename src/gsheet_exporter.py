@@ -47,7 +47,7 @@ def get_gspread_client():
 
     return gspread.authorize(creds)
 
-def build_nested_if_formula(drop_cell_ref: str, rival_best_map: dict) -> str:
+def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> str:
     items = list(rival_best_map.items())
     if not items:
         return '"No disponible"'
@@ -61,7 +61,7 @@ def build_nested_if_formula(drop_cell_ref: str, rival_best_map: dict) -> str:
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Asistente de 2 Tandas y Listas completas.
+    con Matriz 5x5, Asistente de 2 Tandas WTC y Listas completas.
     """
     client = get_gspread_client()
     
@@ -100,23 +100,23 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
     # -------------------------------------------------------------
     teams = event_data.get('teams', [])
     mudhorns_info = [
-        ("Alzu", "Rebeldes (Tanque / Resistencia)"),
-        ("Ale", "Scum (3 Naves Grandes / Masa)"),
-        ("Ander", "Separatistas (Firesprays + Sun Fac)"),
-        ("Koli", "República (Ases de Fuerza / Movilidad)"),
-        ("Marc", "Primera Orden (Kylo + Midnight)")
+        ("Alzu", "Rebeldes (Defensor #1 Fijo)"),
+        ("Ander", "Separatistas (Defensor #2 Fijo)"),
+        ("Marc", "Primera Orden (Lanza)"),
+        ("Koli", "República (Lanza)"),
+        ("Ale", "Scum (Lanza)")
     ]
+    lanzas_list = ["Marc", "Koli", "Ale"]
 
     for team in teams:
         t_name = team.get('team_name', 'Equipo')[:31]
         players_data = team.get('players_data', [])
         
-        ws_team = sh.add_worksheet(title=t_name, rows=30, cols=max(len(players_data), 8))
+        ws_team = sh.add_worksheet(title=t_name, rows=32, cols=max(len(players_data), 8))
         
         matrix_headers = ["Jugador Mudhorn", "Perfil / Rol"]
         rival_nicks = []
         rival_best_tanda1 = {}
-        rival_best_tanda2 = {}
 
         for p_data in players_data:
             r_nick = p_data.get('player_name', 'Rival')
@@ -126,16 +126,10 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             eval_matrix = evaluate_5x5_matrix(p_data)
             
             lanzas1 = []
-            for m_name in ["Marc", "Koli", "Ale", "Ander"]:
+            for m_name in lanzas_list:
                 lanzas1.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
             lanzas1.sort(key=lambda x: -x[1])
             rival_best_tanda1[r_nick] = f"{lanzas1[0][0]} y {lanzas1[1][0]}"
-
-            lanzas2 = []
-            for m_name in ["Marc", "Koli", "Ale"]:
-                lanzas2.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
-            lanzas2.sort(key=lambda x: -x[1])
-            rival_best_tanda2[r_nick] = f"{lanzas2[0][0]} y {lanzas2[1][0]}"
 
         matrix_headers.append("Balance Net Score")
         
@@ -160,21 +154,24 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             row_eval.append(f"{net_score:+d}")
             matrix_rows.append(row_eval)
             
-        formula1 = build_nested_if_formula("C14", rival_best_tanda1)
-        formula2 = build_nested_if_formula("C19", rival_best_tanda2)
-        
+        formula1 = build_nested_if_formula_tanda1("C14", rival_best_tanda1)
+        formula2 = '=IF(C16="Marc", "⚔️ Koli y Ale", IF(C16="Koli", "⚔️ Marc y Ale", "⚔️ Marc y Koli"))'
+        formula5 = '=IF(AND(C16<>"Marc", C22<>"Marc"), "⚔️ Marc (Nuestra Lanza descartada)", IF(AND(C16<>"Koli", C22<>"Koli"), "⚔️ Koli (Nuestra Lanza descartada)", "⚔️ Ale (Nuestra Lanza descartada)"))'
+
         matrix_rows.append([])
-        matrix_rows.append(["🎛️ ASISTENTE INTERACTIVO DE PAIRING (2 TANDAS EN MESA)"])
+        matrix_rows.append(["🎛️ ASISTENTE INTERACTIVO DE PAIRINGS (FLUJO COMPLETO WTC EN TIEMPO REAL)"])
         matrix_rows.append(["🔵 TANDA 1 (Primeros 2 Emparejamientos)"])
-        matrix_rows.append(["• Defensor #1 presentado por nosotros (a ciegas): Alzu (Rebeldes)"])
+        matrix_rows.append(["• Defensor #1 Presentado (a ciegas): Alzu (Rebeldes)"])
         matrix_rows.append(["1️⃣ Selecciona el Defensor Rival #1 revelado (Tanda 1):", "", rival_nicks[0] if rival_nicks else ""])
-        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 1):", "", formula1])
+        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLE:", "", formula1])
+        matrix_rows.append(["2️⃣ ¿Qué Lanza de vuestras 2 ofreció/aceptó el rival en Tanda 1?:", "", "Marc"])
         matrix_rows.append([])
         matrix_rows.append(["🔴 TANDA 2 (Emparejamientos 3, 4 y 5)"])
-        matrix_rows.append(["• Defensor #2 presentado por nosotros (a ciegas): Ander / Ale"])
-        matrix_rows.append(["2️⃣ Selecciona el Defensor Rival #2 revelado (Tanda 2):", "", rival_nicks[1] if len(rival_nicks) > 1 else (rival_nicks[0] if rival_nicks else "")])
-        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 2):", "", formula2])
-        matrix_rows.append(["⚡ Cruce 5 (Automático por descarte): Atacante nuestro no elegido vs Atacante rival no elegido."])
+        matrix_rows.append(["• Defensor #2 Presentado (a ciegas): Ander (Separatistas)"])
+        matrix_rows.append(["3️⃣ Selecciona el Defensor Rival #2 revelado (Tanda 2):", "", rival_nicks[1] if len(rival_nicks) > 1 else (rival_nicks[0] if rival_nicks else "")])
+        matrix_rows.append(["💡 LAS 2 LANZAS RESTANTES A OFRECERLE EN TANDA 2:", "", formula2])
+        matrix_rows.append(["4️⃣ ¿Qué Lanza aceptó el rival en Tanda 2?:", "", "Koli"])
+        matrix_rows.append(["⚡ Cruce 5 (Automático por descarte final):", "", formula5])
         
         matrix_rows.append([])
         matrix_rows.append(["📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL"])
@@ -206,6 +203,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con Asistente de 2 Tandas!")
+    print(f"\n[SUCCESS] Google Sheet creado con Asistente WTC Completo!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url

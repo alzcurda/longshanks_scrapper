@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from src.config import OUTPUT_DIR
-from src.matrix_evaluator import evaluate_5x5_matrix, get_team_pairing_recommendations
+from src.matrix_evaluator import evaluate_5x5_matrix
 
 def sanitize_sheet_title(name: str) -> str:
     """Limpia y trunca el nombre de un equipo para que sea un título válido de pestaña en Excel (máx 31 caracteres)."""
@@ -15,11 +15,8 @@ def sanitize_sheet_title(name: str) -> str:
     clean_name = re.sub(r'[\\/*?:\[\]]', '', name).strip()
     return clean_name[:31] if clean_name else "Equipo"
 
-def build_nested_if_formula(drop_cell_ref: str, rival_best_map: dict) -> str:
-    """
-    Construye una fórmula anidada IF(...) estándar compatible con TODAS las versiones de Excel
-    (incluyendo Excel en español/inglés sin causar errores #¿NOMBRE?).
-    """
+def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> str:
+    """Construye una fórmula anidada IF(...) universal para la Tanda 1."""
     items = list(rival_best_map.items())
     if not items:
         return '"No disponible"'
@@ -32,12 +29,12 @@ def build_nested_if_formula(drop_cell_ref: str, rival_best_map: dict) -> str:
 
 def export_to_excel(event_id: str, event_data: dict, output_filename: str = None) -> str:
     """
-    Genera un libro de Excel (.xlsx) interactivo con:
-    1. Pestaña 'Resumen Torneo'.
-    2. Pestaña por cada Equipo Rival con:
-       - MATRIZ DE EMPAREJAMIENTOS 5x5 TRANSPUESTA.
-       - ASISTENTE INTERACTIVO DE 2 TANDAS (Desplegable Tanda 1 + Desplegable Tanda 2 con fórmulas IF compatibles).
-       - LISTAS DETALLADAS DE CADA RIVAL en celdas multilínea.
+    Genera un libro de Excel (.xlsx) con el ASISTENTE DINÁMICO COMPLETO WTC:
+    - Defensores Fijos Únicos: Alzu (Defensor 1) y Ander (Defensor 2).
+    - Lanzas Disponibles: Marc, Koli, Ale.
+    - Tanda 1: Elección de Defensor Rival + Elección de Lanza aceptada.
+    - Tanda 2: Actualización dinámica de Lanzas restantes + Elección Lanza Tanda 2.
+    - Cruce 5: Cálculo automático de la Lanza descartada que juega el Cruce 5.
     """
     if not output_filename:
         output_filename = os.path.join(OUTPUT_DIR, f"event_{event_id}_listas.xlsx")
@@ -46,9 +43,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
 
     wb = openpyxl.Workbook()
     
-    # -------------------------------------------------------------
     # Estilos de Excel
-    # -------------------------------------------------------------
     font_title = Font(name='Segoe UI', size=14, bold=True, color='1F4E78')
     font_section_title = Font(name='Segoe UI', size=12, bold=True, color='1F4E78')
     font_header = Font(name='Segoe UI', size=11, bold=True, color='FFFFFF')
@@ -125,16 +120,17 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_summary.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
     # -------------------------------------------------------------
-    # Pestañas por Cada Equipo (Dashboard 5x5 + Asistente 2 Tandas)
+    # Pestañas por Cada Equipo (Dashboard 5x5 + Flujo Dinámico WTC)
     # -------------------------------------------------------------
     used_titles = set()
     mudhorns_info = [
-        ("Alzu", "Rebeldes (Tanque / Resistencia)"),
-        ("Ale", "Scum (3 Naves Grandes / Masa)"),
-        ("Ander", "Separatistas (Firesprays + Sun Fac)"),
-        ("Koli", "República (Ases de Fuerza / Movilidad)"),
-        ("Marc", "Primera Orden (Kylo + Midnight)")
+        ("Alzu", "Rebeldes (Defensor #1 Fijo)"),
+        ("Ander", "Separatistas (Defensor #2 Fijo)"),
+        ("Marc", "Primera Orden (Lanza)"),
+        ("Koli", "República (Lanza)"),
+        ("Ale", "Scum (Lanza)")
     ]
+    lanzas_list = ["Marc", "Koli", "Ale"]
     
     for team in event_data.get('teams', []):
         t_name = team.get('team_name', 'Equipo')
@@ -166,7 +162,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         headers_matrix = ["Jugador Mudhorn", "Perfil / Rol"]
         rival_nicks = []
         rival_best_tanda1 = {}
-        rival_best_tanda2 = {}
 
         for p_data in players_data:
             r_nick = p_data.get('player_name', 'Rival')
@@ -175,19 +170,12 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             
             eval_matrix = evaluate_5x5_matrix(p_data)
             
-            # Tanda 1: Mejores 2 atacantes (entre Marc, Koli, Ale, Ander)
+            # Buscar las 2 mejores lanzas (entre Marc, Koli, Ale) contra este rival
             lanzas1 = []
-            for m_name in ["Marc", "Koli", "Ale", "Ander"]:
+            for m_name in lanzas_list:
                 lanzas1.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
             lanzas1.sort(key=lambda x: -x[1])
             rival_best_tanda1[r_nick] = f"{lanzas1[0][0]} y {lanzas1[1][0]}"
-
-            # Tanda 2: Mejores 2 atacantes (entre Marc, Koli, Ale)
-            lanzas2 = []
-            for m_name in ["Marc", "Koli", "Ale"]:
-                lanzas2.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
-            lanzas2.sort(key=lambda x: -x[1])
-            rival_best_tanda2[r_nick] = f"{lanzas2[0][0]} y {lanzas2[1][0]}"
 
         headers_matrix.append("Balance Net Score")
         
@@ -248,81 +236,118 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             m_row += 1
 
         # ---------------------------------------------------------
-        # BLOQUE B: ASISTENTE INTERACTIVO DE 2 TANDAS (TIEMPO REAL EN MESA)
+        # BLOQUE B: ASISTENTE DINÁMICO DE PAIRINGS (FLUJO 2 TANDAS WTC)
         # ---------------------------------------------------------
         rec_start_row = 11
-        ws_team.cell(row=rec_start_row, column=1, value="🎛️ ASISTENTE INTERACTIVO DE PAIRING (2 TANDAS EN MESA)").font = font_section_title
+        ws_team.cell(row=rec_start_row, column=1, value="🎛️ ASISTENTE INTERACTIVO DE PAIRINGS (FLUJO COMPLETO WTC EN TIEMPO REAL)").font = font_section_title
         
         # --- TANDA 1 ---
-        tanda1_title_row = rec_start_row + 1
-        c_t1 = ws_team.cell(row=tanda1_title_row, column=1, value="🔵 TANDA 1 (Primeros 2 Emparejamientos)")
-        c_t1.font = font_header
-        c_t1.fill = fill_tanda1_header
-        c_t1.alignment = align_left
-
-        ws_team.cell(row=rec_start_row + 2, column=1, value="• Defensor #1 presentado por nosotros (a ciegas): Alzu (Rebeldes)").font = font_bold
-
-        drop1_row = rec_start_row + 3
-        ws_team.cell(row=drop1_row, column=1, value="1️⃣ Selecciona el Defensor Rival #1 revelado (Tanda 1):").font = font_interactive
+        ws_team.cell(row=rec_start_row + 1, column=1, value="🔵 TANDA 1 (Primeros 2 Emparejamientos)").font = font_header
+        ws_team.cell(row=rec_start_row + 1, column=1).fill = fill_tanda1_header
         
-        c_drop1 = ws_team.cell(row=drop1_row, column=3, value=rival_nicks[0] if rival_nicks else "")
+        ws_team.cell(row=rec_start_row + 2, column=1, value="• Defensor #1 Presentado (a ciegas): Alzu (Rebeldes)").font = font_bold
+        
+        # 1. Desplegable Defensor Rival #1 (C14)
+        c_drop1_label = ws_team.cell(row=rec_start_row + 3, column=1, value="1️⃣ Selecciona el Defensor Rival #1 revelado (Tanda 1):")
+        c_drop1_label.font = font_interactive
+        
+        c_drop1 = ws_team.cell(row=rec_start_row + 3, column=3, value=rival_nicks[0] if rival_nicks else "")
         c_drop1.font = font_bold
         c_drop1.fill = fill_interactive_box
         c_drop1.alignment = align_center
         c_drop1.border = border_header
 
-        resp1_row = rec_start_row + 4
-        ws_team.cell(row=resp1_row, column=1, value="💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 1):").font = font_interactive
+        # Respuesta 1 (C15): Recomendación de 2 Lanzas
+        c_resp1_label = ws_team.cell(row=rec_start_row + 4, column=1, value="💡 ATACANTES RECOMENDADOS A OFRECERLE:")
+        c_resp1_label.font = font_interactive
         
-        formula_tanda1 = build_nested_if_formula(f"C{drop1_row}", rival_best_tanda1)
-        c_resp1 = ws_team.cell(row=resp1_row, column=3, value=formula_tanda1)
+        formula_tanda1 = build_nested_if_formula_tanda1("C14", rival_best_tanda1)
+        c_resp1 = ws_team.cell(row=rec_start_row + 4, column=3, value=formula_tanda1)
         c_resp1.font = font_green
         c_resp1.fill = fill_green
         c_resp1.alignment = align_left
         c_resp1.border = border_header
 
-        # --- TANDA 2 ---
-        tanda2_title_row = rec_start_row + 6
-        c_t2 = ws_team.cell(row=tanda2_title_row, column=1, value="🔴 TANDA 2 (Emparejamientos 3, 4 y 5)")
-        c_t2.font = font_header
-        c_t2.fill = fill_tanda2_header
-        c_t2.alignment = align_left
-
-        ws_team.cell(row=rec_start_row + 7, column=1, value="• Defensor #2 presentado por nosotros (a ciegas): Ander / Ale").font = font_bold
-
-        drop2_row = rec_start_row + 8
-        ws_team.cell(row=drop2_row, column=1, value="2️⃣ Selecciona el Defensor Rival #2 revelado (Tanda 2):").font = font_interactive
+        # 2. Desplegable Lanza elegida por Rival en Tanda 1 (C16)
+        c_pick1_label = ws_team.cell(row=rec_start_row + 5, column=1, value="2️⃣ ¿Qué Lanza de vuestras 2 ofreció/aceptó el rival en Tanda 1?:")
+        c_pick1_label.font = font_interactive
         
-        c_drop2 = ws_team.cell(row=drop2_row, column=3, value=rival_nicks[1] if len(rival_nicks) > 1 else (rival_nicks[0] if rival_nicks else ""))
+        c_pick1 = ws_team.cell(row=rec_start_row + 5, column=3, value="Marc")
+        c_pick1.font = font_bold
+        c_pick1.fill = fill_interactive_box
+        c_pick1.alignment = align_center
+        c_pick1.border = border_header
+
+        # --- TANDA 2 ---
+        ws_team.cell(row=rec_start_row + 7, column=1, value="🔴 TANDA 2 (Emparejamientos 3, 4 y 5)").font = font_header
+        ws_team.cell(row=rec_start_row + 7, column=1).fill = fill_tanda2_header
+        
+        ws_team.cell(row=rec_start_row + 8, column=1, value="• Defensor #2 Presentado (a ciegas): Ander (Separatistas)").font = font_bold
+
+        # 3. Desplegable Defensor Rival #2 (C20)
+        c_drop2_label = ws_team.cell(row=rec_start_row + 9, column=1, value="3️⃣ Selecciona el Defensor Rival #2 revelado (Tanda 2):")
+        c_drop2_label.font = font_interactive
+        
+        c_drop2 = ws_team.cell(row=rec_start_row + 9, column=3, value=rival_nicks[1] if len(rival_nicks) > 1 else (rival_nicks[0] if rival_nicks else ""))
         c_drop2.font = font_bold
         c_drop2.fill = fill_interactive_box
         c_drop2.alignment = align_center
         c_drop2.border = border_header
 
-        resp2_row = rec_start_row + 9
-        ws_team.cell(row=resp2_row, column=1, value="💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 2):").font = font_interactive
+        # Respuesta Tanda 2 (C21): Dinámica según la Lanza elegida en C16
+        c_resp2_label = ws_team.cell(row=rec_start_row + 10, column=1, value="💡 LAS 2 LANZAS RESTANTES A OFRECERLE EN TANDA 2:")
+        c_resp2_label.font = font_interactive
         
-        formula_tanda2 = build_nested_if_formula(f"C{drop2_row}", rival_best_tanda2)
-        c_resp2 = ws_team.cell(row=resp2_row, column=3, value=formula_tanda2)
+        formula_tanda2 = '=IF(C16="Marc", "⚔️ Koli y Ale", IF(C16="Koli", "⚔️ Marc y Ale", "⚔️ Marc y Koli"))'
+        c_resp2 = ws_team.cell(row=rec_start_row + 10, column=3, value=formula_tanda2)
         c_resp2.font = font_green
         c_resp2.fill = fill_green
         c_resp2.alignment = align_left
         c_resp2.border = border_header
 
-        ws_team.cell(row=rec_start_row + 10, column=1, value="⚡ Cruce 5 (Automático por descarte): Atacante nuestro no elegido vs Atacante rival no elegido.").font = font_faction
+        # 4. Desplegable Lanza elegida por Rival en Tanda 2 (C22)
+        c_pick2_label = ws_team.cell(row=rec_start_row + 11, column=1, value="4️⃣ ¿Qué Lanza aceptó el rival en Tanda 2?:")
+        c_pick2_label.font = font_interactive
+        
+        c_pick2 = ws_team.cell(row=rec_start_row + 11, column=3, value="Koli")
+        c_pick2.font = font_bold
+        c_pick2.fill = fill_interactive_box
+        c_pick2.alignment = align_center
+        c_pick2.border = border_header
 
-        # Añadir DataValidation para los dos desplegables C14 y C19
+        # 5. Cruce 5 Automático por Descarte Final (C23)
+        c_cruce5_label = ws_team.cell(row=rec_start_row + 12, column=1, value="⚡ Cruce 5 (Automático por descarte final):")
+        c_cruce5_label.font = font_interactive
+        
+        formula_cruce5 = '=IF(AND(C16<>"Marc", C22<>"Marc"), "⚔️ Marc (Nuestra Lanza descartada)", IF(AND(C16<>"Koli", C22<>"Koli"), "⚔️ Koli (Nuestra Lanza descartada)", "⚔️ Ale (Nuestra Lanza descartada)"))'
+        c_cruce5 = ws_team.cell(row=rec_start_row + 12, column=3, value=formula_cruce5)
+        c_cruce5.font = font_bold
+        c_cruce5.fill = fill_yellow
+        c_cruce5.alignment = align_left
+        c_cruce5.border = border_header
+
+        # Aplicar DataValidation a los desplegables
         if rival_nicks:
-            formula_list = '"' + ",".join(rival_nicks) + '"'
-            dv1 = DataValidation(type="list", formula1=formula_list, allow_blank=False)
-            ws_team.add_data_validation(dv1)
-            dv1.add(c_drop1)
+            formula_rivales = '"' + ",".join(rival_nicks) + '"'
+            dv_rival1 = DataValidation(type="list", formula1=formula_rivales, allow_blank=False)
+            ws_team.add_data_validation(dv_rival1)
+            dv_rival1.add(c_drop1)
             
-            dv2 = DataValidation(type="list", formula1=formula_list, allow_blank=False)
-            ws_team.add_data_validation(dv2)
-            dv2.add(c_drop2)
+            dv_rival2 = DataValidation(type="list", formula1=formula_rivales, allow_blank=False)
+            ws_team.add_data_validation(dv_rival2)
+            dv_rival2.add(c_drop2)
 
-        for r_offset in range(1, 11):
+        formula_lanzas = '"Marc,Koli,Ale"'
+        dv_lan1 = DataValidation(type="list", formula1=formula_lanzas, allow_blank=False)
+        ws_team.add_data_validation(dv_lan1)
+        dv_lan1.add(c_pick1)
+        
+        dv_lan2 = DataValidation(type="list", formula1=formula_lanzas, allow_blank=False)
+        ws_team.add_data_validation(dv_lan2)
+        dv_lan2.add(c_pick2)
+
+        # Aplicar estilos de bordes y relleno al bloque del asistente
+        for r_offset in range(1, 13):
             r_idx = rec_start_row + r_offset
             for c_idx in range(1, len(headers_matrix) + 1):
                 cell_box = ws_team.cell(row=r_idx, column=c_idx)
@@ -331,9 +356,9 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 cell_box.border = border_cell
 
         # ---------------------------------------------------------
-        # BLOQUE C: LISTAS DETALLADAS DEL EQUIPO RIVAL (Rows 23+)
+        # BLOQUE C: LISTAS DETALLADAS DEL EQUIPO RIVAL (Rows 26+)
         # ---------------------------------------------------------
-        list_start_row = 23
+        list_start_row = 26
         ws_team.cell(row=list_start_row, column=1, value="📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL").font = font_section_title
         
         header_row = list_start_row + 1
@@ -373,5 +398,5 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.column_dimensions[col_letter].width = 44
 
     wb.save(output_filename)
-    print(f"[+] Libro Excel con Asistente de 2 Tandas guardado en: {output_filename}")
+    print(f"[+] Libro Excel con Asistente Dinámico WTC guardado en: {output_filename}")
     return output_filename
