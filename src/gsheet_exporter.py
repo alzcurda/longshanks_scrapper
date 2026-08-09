@@ -47,10 +47,21 @@ def get_gspread_client():
 
     return gspread.authorize(creds)
 
+def build_nested_if_formula(drop_cell_ref: str, rival_best_map: dict) -> str:
+    items = list(rival_best_map.items())
+    if not items:
+        return '"No disponible"'
+        
+    formula = f'"⚔️ {items[-1][1]}"'
+    for r_nick, best_atks in reversed(items[:-1]):
+        formula = f'IF({drop_cell_ref}="{r_nick}", "⚔️ {best_atks}", {formula})'
+        
+    return "=" + formula
+
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Asistente Interactivo de Pairings y Listas completas.
+    con Matriz 5x5, Asistente de 2 Tandas y Listas completas.
     """
     client = get_gspread_client()
     
@@ -100,11 +111,12 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         t_name = team.get('team_name', 'Equipo')[:31]
         players_data = team.get('players_data', [])
         
-        ws_team = sh.add_worksheet(title=t_name, rows=25, cols=max(len(players_data), 8))
+        ws_team = sh.add_worksheet(title=t_name, rows=30, cols=max(len(players_data), 8))
         
         matrix_headers = ["Jugador Mudhorn", "Perfil / Rol"]
         rival_nicks = []
-        rival_best_attackers = {}
+        rival_best_tanda1 = {}
+        rival_best_tanda2 = {}
 
         for p_data in players_data:
             r_nick = p_data.get('player_name', 'Rival')
@@ -112,12 +124,18 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             matrix_headers.append(f"vs {r_nick}")
             
             eval_matrix = evaluate_5x5_matrix(p_data)
-            lanzas_scores = []
+            
+            lanzas1 = []
             for m_name in ["Marc", "Koli", "Ale", "Ander"]:
-                lanzas_scores.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
-            lanzas_scores.sort(key=lambda x: -x[1])
-            best_two = [lanzas_scores[0][0], lanzas_scores[1][0]]
-            rival_best_attackers[r_nick] = f"{best_two[0]} y {best_two[1]}"
+                lanzas1.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
+            lanzas1.sort(key=lambda x: -x[1])
+            rival_best_tanda1[r_nick] = f"{lanzas1[0][0]} y {lanzas1[1][0]}"
+
+            lanzas2 = []
+            for m_name in ["Marc", "Koli", "Ale"]:
+                lanzas2.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
+            lanzas2.sort(key=lambda x: -x[1])
+            rival_best_tanda2[r_nick] = f"{lanzas2[0][0]} y {lanzas2[1][0]}"
 
         matrix_headers.append("Balance Net Score")
         
@@ -142,18 +160,21 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             row_eval.append(f"{net_score:+d}")
             matrix_rows.append(row_eval)
             
-        # Asistente Interactivo con fórmula IFS de Google Sheets
-        formula_cases = []
-        for r_nick, best_atks in rival_best_attackers.items():
-            formula_cases.append(f'C14="{r_nick}","⚔️ {best_atks}"')
-        gsheet_formula = f'=IFS({", ".join(formula_cases)})'
+        formula1 = build_nested_if_formula("C14", rival_best_tanda1)
+        formula2 = build_nested_if_formula("C19", rival_best_tanda2)
         
         matrix_rows.append([])
-        matrix_rows.append(["🎛️ ASISTENTE INTERACTIVO DE PAIRING (TIEMPO REAL EN MESA)"])
-        matrix_rows.append(["• Defensor #1 Fijo (a ciegas): Alzu (Rebeldes)"])
-        matrix_rows.append(["• Defensor #2 Fijo (a ciegas): Ander / Ale"])
-        matrix_rows.append(["1️⃣ Selecciona el Defensor Rival que han revelado:", "", rival_nicks[0] if rival_nicks else ""])
-        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLES:", "", gsheet_formula])
+        matrix_rows.append(["🎛️ ASISTENTE INTERACTIVO DE PAIRING (2 TANDAS EN MESA)"])
+        matrix_rows.append(["🔵 TANDA 1 (Primeros 2 Emparejamientos)"])
+        matrix_rows.append(["• Defensor #1 presentado por nosotros (a ciegas): Alzu (Rebeldes)"])
+        matrix_rows.append(["1️⃣ Selecciona el Defensor Rival #1 revelado (Tanda 1):", "", rival_nicks[0] if rival_nicks else ""])
+        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 1):", "", formula1])
+        matrix_rows.append([])
+        matrix_rows.append(["🔴 TANDA 2 (Emparejamientos 3, 4 y 5)"])
+        matrix_rows.append(["• Defensor #2 presentado por nosotros (a ciegas): Ander / Ale"])
+        matrix_rows.append(["2️⃣ Selecciona el Defensor Rival #2 revelado (Tanda 2):", "", rival_nicks[1] if len(rival_nicks) > 1 else (rival_nicks[0] if rival_nicks else "")])
+        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLE (Tanda 2):", "", formula2])
+        matrix_rows.append(["⚡ Cruce 5 (Automático por descarte): Atacante nuestro no elegido vs Atacante rival no elegido."])
         
         matrix_rows.append([])
         matrix_rows.append(["📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL"])
@@ -185,6 +206,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con Asistente Interactivo de Pairings!")
+    print(f"\n[SUCCESS] Google Sheet creado con Asistente de 2 Tandas!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url
