@@ -61,7 +61,7 @@ def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> 
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Asistente Bidireccional WTC y Listas completas.
+    con Matriz 5x5, Asistente Bidireccional WTC con 5 rivales únicos y Listas completas.
     """
     client = get_gspread_client()
     
@@ -133,6 +133,12 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
 
         matrix_headers.append("Balance Net Score")
         
+        r0 = rival_nicks[0] if len(rival_nicks) > 0 else ""
+        r1 = rival_nicks[1] if len(rival_nicks) > 1 else r0
+        r2 = rival_nicks[2] if len(rival_nicks) > 2 else r0
+        r3 = rival_nicks[3] if len(rival_nicks) > 3 else r0
+        r4 = rival_nicks[4] if len(rival_nicks) > 4 else r0
+
         matrix_rows = [
             [f"Equipo Rival: {t_name}"],
             [],
@@ -156,25 +162,26 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             
         formula1 = build_nested_if_formula_tanda1("C14", rival_best_tanda1)
         formula2 = '=IF(C16="Marc", "⚔️ Koli y Ale", IF(C16="Koli", "⚔️ Marc y Ale", "⚔️ Marc y Koli"))'
+        formula5 = f'=IF(AND(C16<>"Marc", C23<>"Marc"), "⚔️ Marc", IF(AND(C16<>"Koli", C23<>"Koli"), "⚔️ Koli", "⚔️ Ale")) & " vs " & IF(AND(G17<>"{r1}", G24<>"{r1}"), "{r1}", "{r4}")'
 
         matrix_rows.append([])
         matrix_rows.append(["🎛️ ASISTENTE BIDIRECCIONAL DE PAIRING (PANEL CONTROL WTC TIEMPO REAL)"])
         matrix_rows.append(["🔵 TANDA 1 (Primeros 2 Emparejamientos)"])
         matrix_rows.append(["[OFERTA 1A] Su Defensor -> Nuestras Lanzas", "", "", "", "[OFERTA 1B] Nuestro Defensor #1 Alzu -> Sus Atacantes"])
-        matrix_rows.append(["1️⃣ Defensor Rival #1 revelado:", "", rival_nicks[0] if rival_nicks else "", "", "• Atacante Rival #1A para Alzu:", "", rival_nicks[1] if len(rival_nicks)>1 else ""])
-        matrix_rows.append(["💡 Nuestras 2 Lanzas recomendadas:", "", formula1, "", "• Atacante Rival #1B para Alzu:", "", rival_nicks[2] if len(rival_nicks)>2 else ""])
+        matrix_rows.append(["1️⃣ Defensor Rival #1 revelado:", "", r0, "", "• Atacante Rival #1A para Alzu:", "", r1])
+        matrix_rows.append(["💡 Nuestras 2 Lanzas recomendadas:", "", formula1, "", "• Atacante Rival #1B para Alzu:", "", r2])
         matrix_rows.append(["2️⃣ ¿Qué Lanza aceptó el rival?:", "", "Marc", "", "💡 Recomendación para Alzu:", "", '=IF(G14="", "Esperando asignación", "🛡️ Recomendado: " & G14)'])
-        matrix_rows.append(["", "", "", "", "3️⃣ Atacante Rival aceptado para Alzu (Cruce 2):", "", rival_nicks[1] if len(rival_nicks)>1 else ""])
+        matrix_rows.append(["", "", "", "", "3️⃣ Atacante Rival aceptado para Alzu (Cruce 2):", "", r1])
         
         matrix_rows.append([])
         matrix_rows.append(["🔴 TANDA 2 (Emparejamientos 3, 4 y 5)"])
         matrix_rows.append(["[OFERTA 2A] Su Defensor #2 -> Lanzas Restantes", "", "", "", "[OFERTA 2B] Nuestro Defensor #2 Ander -> Sus Atacantes"])
-        matrix_rows.append(["4️⃣ Defensor Rival #2 revelado:", "", rival_nicks[3] if len(rival_nicks)>3 else "", "", "• Atacante Rival #2A para Ander:", "", rival_nicks[3] if len(rival_nicks)>3 else ""])
-        matrix_rows.append(["💡 Lanzas disponibles en Tanda 2:", "", formula2, "", "• Atacante Rival #2B para Ander:", "", rival_nicks[4] if len(rival_nicks)>4 else ""])
+        matrix_rows.append(["4️⃣ Defensor Rival #2 revelado:", "", r3, "", "• Atacante Rival #2A para Ander:", "", r3])
+        matrix_rows.append(["💡 Lanzas disponibles en Tanda 2:", "", formula2, "", "• Atacante Rival #2B para Ander:", "", r4])
         matrix_rows.append(["5️⃣ ¿Qué Lanza aceptó el rival?:", "", "Koli", "", "💡 Recomendación para Ander:", "", '=IF(G21="", "Esperando asignación", "🛡️ Recomendado: " & G21)'])
-        matrix_rows.append(["", "", "", "", "6️⃣ Atacante Rival aceptado para Ander (Cruce 4):", "", rival_nicks[3] if len(rival_nicks)>3 else ""])
+        matrix_rows.append(["", "", "", "", "6️⃣ Atacante Rival aceptado para Ander (Cruce 4):", "", r3])
         
-        matrix_rows.append(["⚡ Cruce 5 (Automático por descarte final):", "", '=IF(AND(C16<>"Marc", C23<>"Marc"), "⚔️ Marc", IF(AND(C16<>"Koli", C23<>"Koli"), "⚔️ Koli", "⚔️ Ale"))'])
+        matrix_rows.append(["⚡ Cruce 5 (Automático por descarte final):", "", formula5])
         
         matrix_rows.append([])
         matrix_rows.append(["📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL"])
@@ -206,6 +213,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con Asistente Bidireccional WTC!")
+    print(f"\n[SUCCESS] Google Sheet creado con 5 rivales únicos predeterminados!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url
