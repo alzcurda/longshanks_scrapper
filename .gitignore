@@ -1,0 +1,30 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Data & Outputs (Local Cache and Generated Files)
+data/
+output/
+*.xlsx
+*.csv
+*.html
+
+# Google API Credentials & Tokens (CRITICAL: Security)
+credentials.json
+client_secret.json
+token.json
+*.pem
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Operating System & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
