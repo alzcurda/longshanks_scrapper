@@ -61,7 +61,7 @@ def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> 
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Asistente Compacto WTC y Listas completas.
+    con Matriz 5x5, Asistente Compacto WTC y desempate inteligente.
     """
     client = get_gspread_client()
     
@@ -114,6 +114,12 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         
         ws_team = sh.add_worksheet(title=t_name, rows=35, cols=max(len(players_data), 8))
         
+        lanzas_global_net = {m: 0 for m in lanzas_list}
+        for p_data in players_data:
+            eval_matrix = evaluate_5x5_matrix(p_data)
+            for m in lanzas_list:
+                lanzas_global_net[m] += eval_matrix.get(m, {}).get('score', 0)
+
         matrix_headers = ["Jugador Mudhorn", "Perfil / Rol"]
         rival_nicks = []
         rival_best_tanda1 = {}
@@ -127,9 +133,12 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             
             lanzas1 = []
             for m_name in lanzas_list:
-                lanzas1.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
-            lanzas1.sort(key=lambda x: -x[1])
-            rival_best_tanda1[r_nick] = f"{lanzas1[0][0]} y {lanzas1[1][0]}"
+                spec_score = eval_matrix.get(m_name, {}).get('score', 0)
+                glob_score = lanzas_global_net[m_name]
+                lanzas1.append((m_name, spec_score, glob_score))
+            lanzas1.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            best_two_names = sorted([lanzas1[0][0], lanzas1[1][0]])
+            rival_best_tanda1[r_nick] = f"{best_two_names[0]} y {best_two_names[1]}"
 
         matrix_headers.append("Balance Net Score")
         
@@ -213,6 +222,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con layout compacto sin espacios!")
+    print(f"\n[SUCCESS] Google Sheet creado con desempate inteligente de Lanzas!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url

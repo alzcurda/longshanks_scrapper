@@ -30,9 +30,7 @@ def build_nested_if_formula_tanda1(drop_cell_ref: str, rival_best_map: dict) -> 
 def export_to_excel(event_id: str, event_data: dict, output_filename: str = None) -> str:
     """
     Genera un libro de Excel (.xlsx) interactivo con el ASISTENTE BIDIRECCIONAL COMPLETO WTC:
-    - Sin columnas vacías de separación entre Oferta 1A y Oferta 1B.
-    - Defensores Fijos Únicos: Alzu (Defensor 1) y Ander (Defensor 2).
-    - Lanzas Disponibles: Marc, Koli, Ale.
+    - Desempate mejorado: si dos Lanzas empatan contra un defensor rival, desempata la Lanza con mayor Net Score global (más 🟢).
     """
     if not output_filename:
         output_filename = os.path.join(OUTPUT_DIR, f"event_{event_id}_listas.xlsx")
@@ -41,9 +39,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
 
     wb = openpyxl.Workbook()
     
-    # -------------------------------------------------------------
     # Estilos de Excel
-    # -------------------------------------------------------------
     font_title = Font(name='Segoe UI', size=14, bold=True, color='1F4E78')
     font_section_title = Font(name='Segoe UI', size=12, bold=True, color='1F4E78')
     font_header = Font(name='Segoe UI', size=11, bold=True, color='FFFFFF')
@@ -120,7 +116,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_summary.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
     # -------------------------------------------------------------
-    # Pestañas por Cada Equipo (Dashboard 5x5 + Asistente Compacto WTC)
+    # Pestañas por Cada Equipo
     # -------------------------------------------------------------
     used_titles = set()
     mudhorns_info = [
@@ -154,6 +150,13 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=3, column=1, value="No se encontraron datos para este equipo.").font = font_normal
             continue
 
+        # Precalcular puntajes globales Net de las Lanzas contra todo este equipo rival
+        lanzas_global_net = {m: 0 for m in lanzas_list}
+        for p_data in players_data:
+            eval_matrix = evaluate_5x5_matrix(p_data)
+            for m in lanzas_list:
+                lanzas_global_net[m] += eval_matrix.get(m, {}).get('score', 0)
+
         # ---------------------------------------------------------
         # BLOQUE A: MATRIZ DE EMPAREJAMIENTOS 5x5 TRANSPUESTA
         # ---------------------------------------------------------
@@ -170,11 +173,19 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             
             eval_matrix = evaluate_5x5_matrix(p_data)
             
+            # Buscar las 2 mejores lanzas (entre Marc, Koli, Ale) ordenando por:
+            # 1. Puntuación contra este defensor específico
+            # 2. Desempate por Net Score global del jugador contra el equipo rival
             lanzas1 = []
             for m_name in lanzas_list:
-                lanzas1.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
-            lanzas1.sort(key=lambda x: -x[1])
-            rival_best_tanda1[r_nick] = f"{lanzas1[0][0]} y {lanzas1[1][0]}"
+                spec_score = eval_matrix.get(m_name, {}).get('score', 0)
+                glob_score = lanzas_global_net[m_name]
+                lanzas1.append((m_name, spec_score, glob_score))
+            lanzas1.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            
+            # Ordenar alfabéticamente los 2 nombres para presentación limpia
+            best_two_names = sorted([lanzas1[0][0], lanzas1[1][0]])
+            rival_best_tanda1[r_nick] = f"{best_two_names[0]} y {best_two_names[1]}"
 
         headers_matrix.append("Balance Net Score")
         
@@ -235,8 +246,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             m_row += 1
 
         # ---------------------------------------------------------
-        # BLOQUE B: ASISTENTE COMPACTO WTC (SIN COLUMNAS VACÍAS)
-        # Col A-B: Oferta 1A / 2A | Col C-D: Oferta 1B / 2B
+        # BLOQUE B: ASISTENTE COMPACTO WTC (LAYOUT SIN GAPS)
         # ---------------------------------------------------------
         r0 = rival_nicks[0] if len(rival_nicks) > 0 else ""
         r1 = rival_nicks[1] if len(rival_nicks) > 1 else r0
@@ -254,7 +264,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_team.cell(row=rec_start_row + 2, column=1, value="[OFERTA 1A] Su Defensor -> Nuestras Lanzas").font = font_bold
         ws_team.cell(row=rec_start_row + 2, column=3, value="[OFERTA 1B] Nuestro Defensor #1 Alzu -> Sus Atacantes").font = font_bold
         
-        # Fila 14: B14 (Defensor Rival 1: r0) | D14 (Atacante Rival 1A para Alzu: r1)
         ws_team.cell(row=14, column=1, value="1️⃣ Defensor Rival #1 revelado:").font = font_interactive
         c_r1_def = ws_team.cell(row=14, column=2, value=r0)
         c_r1_def.font = font_bold; c_r1_def.fill = fill_interactive_box; c_r1_def.alignment = align_center; c_r1_def.border = border_header
@@ -263,7 +272,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r1_atk1 = ws_team.cell(row=14, column=4, value=r1)
         c_r1_atk1.font = font_bold; c_r1_atk1.fill = fill_interactive_box; c_r1_atk1.alignment = align_center; c_r1_atk1.border = border_header
 
-        # Fila 15: B15 (Lanzas recomendadas) | D15 (Atacante Rival 1B para Alzu: r2)
         ws_team.cell(row=15, column=1, value="💡 Nuestras 2 Lanzas recomendadas:").font = font_interactive
         c_rec_lanzas1 = ws_team.cell(row=15, column=2, value=build_nested_if_formula_tanda1("B14", rival_best_tanda1))
         c_rec_lanzas1.font = font_green; c_rec_lanzas1.fill = fill_green; c_rec_lanzas1.alignment = align_left; c_rec_lanzas1.border = border_header
@@ -272,7 +280,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r1_atk2 = ws_team.cell(row=15, column=4, value=r2)
         c_r1_atk2.font = font_bold; c_r1_atk2.fill = fill_interactive_box; c_r1_atk2.alignment = align_center; c_r1_atk2.border = border_header
 
-        # Fila 16: B16 (Lanza nuestra aceptada) | D16 (Recomendación para Alzu)
         ws_team.cell(row=16, column=1, value="2️⃣ ¿Qué Lanza aceptó el rival?:").font = font_interactive
         c_m_lan1_pick = ws_team.cell(row=16, column=2, value="Marc")
         c_m_lan1_pick.font = font_bold; c_m_lan1_pick.fill = fill_interactive_box; c_m_lan1_pick.alignment = align_center; c_m_lan1_pick.border = border_header
@@ -281,7 +288,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_rec_alzu = ws_team.cell(row=16, column=4, value='=IF(D14="", "Esperando asignación", "🛡️ Recomendado: " & D14)')
         c_rec_alzu.font = font_green; c_rec_alzu.fill = fill_green; c_rec_alzu.alignment = align_left; c_rec_alzu.border = border_header
 
-        # Fila 17: D17 (Atacante Rival aceptado para Alzu - Cruce 2: r1)
         ws_team.cell(row=17, column=3, value="3️⃣ Atacante Rival aceptado para Alzu:").font = font_interactive
         c_r_atk1_final = ws_team.cell(row=17, column=4, value=r1)
         c_r_atk1_final.font = font_bold; c_r_atk1_final.fill = fill_interactive_box; c_r_atk1_final.alignment = align_center; c_r_atk1_final.border = border_header
@@ -293,7 +299,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_team.cell(row=20, column=1, value="[OFERTA 2A] Su Defensor #2 -> Lanzas Restantes").font = font_bold
         ws_team.cell(row=20, column=3, value="[OFERTA 2B] Nuestro Defensor #2 Ander -> Sus Atacantes").font = font_bold
 
-        # Fila 21: B21 (Defensor Rival 2: r3) | D21 (Atacante Rival 2A para Ander: r3)
         ws_team.cell(row=21, column=1, value="4️⃣ Defensor Rival #2 revelado:").font = font_interactive
         c_r2_def = ws_team.cell(row=21, column=2, value=r3)
         c_r2_def.font = font_bold; c_r2_def.fill = fill_interactive_box; c_r2_def.alignment = align_center; c_r2_def.border = border_header
@@ -302,7 +307,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r2_atk1 = ws_team.cell(row=21, column=4, value=r3)
         c_r2_atk1.font = font_bold; c_r2_atk1.fill = fill_interactive_box; c_r2_atk1.alignment = align_center; c_r2_atk1.border = border_header
 
-        # Fila 22: B22 (2 Lanzas restantes) | D22 (Atacante Rival 2B para Ander: r4)
         ws_team.cell(row=22, column=1, value="💡 Lanzas disponibles Tanda 2:").font = font_interactive
         c_rec_lanzas2 = ws_team.cell(row=22, column=2, value='=IF(B16="Marc", "⚔️ Koli y Ale", IF(B16="Koli", "⚔️ Marc y Ale", "⚔️ Marc y Koli"))')
         c_rec_lanzas2.font = font_green; c_rec_lanzas2.fill = fill_green; c_rec_lanzas2.alignment = align_left; c_rec_lanzas2.border = border_header
@@ -311,7 +315,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_r2_atk2 = ws_team.cell(row=22, column=4, value=r4)
         c_r2_atk2.font = font_bold; c_r2_atk2.fill = fill_interactive_box; c_r2_atk2.alignment = align_center; c_r2_atk2.border = border_header
 
-        # Fila 23: B23 (Lanza aceptada Tanda 2) | D23 (Recomendación para Ander)
         ws_team.cell(row=23, column=1, value="5️⃣ ¿Qué Lanza aceptó el rival?:").font = font_interactive
         c_m_lan2_pick = ws_team.cell(row=23, column=2, value="Koli")
         c_m_lan2_pick.font = font_bold; c_m_lan2_pick.fill = fill_interactive_box; c_m_lan2_pick.alignment = align_center; c_m_lan2_pick.border = border_header
@@ -320,18 +323,15 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         c_rec_ander = ws_team.cell(row=23, column=4, value='=IF(D21="", "Esperando asignación", "🛡️ Recomendado: " & D21)')
         c_rec_ander.font = font_green; c_rec_ander.fill = fill_green; c_rec_ander.alignment = align_left; c_rec_ander.border = border_header
 
-        # Fila 24: D24 (Atacante Rival aceptado para Ander - Cruce 4: r3)
         ws_team.cell(row=24, column=3, value="6️⃣ Atacante Rival aceptado para Ander:").font = font_interactive
         c_r_atk2_final = ws_team.cell(row=24, column=4, value=r3)
         c_r_atk2_final.font = font_bold; c_r_atk2_final.fill = fill_interactive_box; c_r_atk2_final.alignment = align_center; c_r_atk2_final.border = border_header
 
-        # Fila 26: Cruce 5 Automático por Descarte Final
         ws_team.cell(row=26, column=1, value="⚡ Cruce 5 (Automático por descarte final):").font = font_section_title
         formula_cruce5 = f'=IF(AND(B16<>"Marc", B23<>"Marc"), "⚔️ Marc", IF(AND(B16<>"Koli", B23<>"Koli"), "⚔️ Koli", "⚔️ Ale")) & " vs " & IF(AND(D17<>"{r1}", D24<>"{r1}"), "{r1}", "{r4}")'
-        c_cruce5 = ws_team.cell(row=26, column=3, value=formula_cruce5)
+        c_cruce5 = ws_team.cell(row=26, column=2, value=formula_cruce5)
         c_cruce5.font = font_bold; c_cruce5.fill = fill_yellow; c_cruce5.alignment = align_left; c_cruce5.border = border_header
 
-        # DataValidation Desplegables
         if rival_nicks:
             formula_rivales = '"' + ",".join(rival_nicks) + '"'
             dv_r = DataValidation(type="list", formula1=formula_rivales, allow_blank=False)
@@ -344,7 +344,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_team.add_data_validation(dv_l)
         dv_l.add(c_m_lan1_pick); dv_l.add(c_m_lan2_pick)
 
-        # Aplicar estilos de cuadrícula limpia
         for r_idx in range(12, 27):
             for c_idx in range(1, len(headers_matrix) + 1):
                 cell_box = ws_team.cell(row=r_idx, column=c_idx)
@@ -395,5 +394,5 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.column_dimensions[col_letter].width = 44
 
     wb.save(output_filename)
-    print(f"[+] Libro Excel con layout compacto sin espacios guardado en: {output_filename}")
+    print(f"[+] Libro Excel con desempate de Lanzas guardado en: {output_filename}")
     return output_filename
