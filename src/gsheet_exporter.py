@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials as UserCredentials
 
 from src.config import BASE_DIR
-from src.matrix_evaluator import evaluate_5x5_matrix, get_team_pairing_recommendations
+from src.matrix_evaluator import evaluate_5x5_matrix
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -50,7 +50,7 @@ def get_gspread_client():
 def export_to_gsheet(event_id: str, event_data: dict) -> str:
     """
     Crea DIRECTAMENTE un nuevo Google Sheet online en Google Drive
-    con Matriz 5x5, Recomendaciones WTC y Listas Completas.
+    con Matriz 5x5, Asistente Interactivo de Pairings y Listas completas.
     """
     client = get_gspread_client()
     
@@ -103,8 +103,22 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         ws_team = sh.add_worksheet(title=t_name, rows=25, cols=max(len(players_data), 8))
         
         matrix_headers = ["Jugador Mudhorn", "Perfil / Rol"]
+        rival_nicks = []
+        rival_best_attackers = {}
+
         for p_data in players_data:
-            matrix_headers.append(f"vs {p_data.get('player_name', 'Rival')}")
+            r_nick = p_data.get('player_name', 'Rival')
+            rival_nicks.append(r_nick)
+            matrix_headers.append(f"vs {r_nick}")
+            
+            eval_matrix = evaluate_5x5_matrix(p_data)
+            lanzas_scores = []
+            for m_name in ["Marc", "Koli", "Ale", "Ander"]:
+                lanzas_scores.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
+            lanzas_scores.sort(key=lambda x: -x[1])
+            best_two = [lanzas_scores[0][0], lanzas_scores[1][0]]
+            rival_best_attackers[r_nick] = f"{best_two[0]} y {best_two[1]}"
+
         matrix_headers.append("Balance Net Score")
         
         matrix_rows = [
@@ -128,17 +142,18 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
             row_eval.append(f"{net_score:+d}")
             matrix_rows.append(row_eval)
             
-        # Recomendación WTC
-        recs = get_team_pairing_recommendations(players_data)
-        d1 = recs['defender_1']
-        d2 = recs['defender_2']
-        atks = ", ".join(recs['attackers'])
+        # Asistente Interactivo con fórmula IFS de Google Sheets
+        formula_cases = []
+        for r_nick, best_atks in rival_best_attackers.items():
+            formula_cases.append(f'C14="{r_nick}","⚔️ {best_atks}"')
+        gsheet_formula = f'=IFS({", ".join(formula_cases)})'
         
         matrix_rows.append([])
-        matrix_rows.append(["🛡️ RECOMENDACIÓN ESTRATÉGICA DE PAIRINGS (WTC)"])
-        matrix_rows.append([f"• Escudo Principal (Defensor #1): {d1}"])
-        matrix_rows.append([f"• Escudo Secundario (Defensor #2): {d2}"])
-        matrix_rows.append([f"• Lanzas de Ataque: {atks}"])
+        matrix_rows.append(["🎛️ ASISTENTE INTERACTIVO DE PAIRING (TIEMPO REAL EN MESA)"])
+        matrix_rows.append(["• Defensor #1 Fijo (a ciegas): Alzu (Rebeldes)"])
+        matrix_rows.append(["• Defensor #2 Fijo (a ciegas): Ander / Ale"])
+        matrix_rows.append(["1️⃣ Selecciona el Defensor Rival que han revelado:", "", rival_nicks[0] if rival_nicks else ""])
+        matrix_rows.append(["💡 ATACANTES RECOMENDADOS A OFRECERLES:", "", gsheet_formula])
         
         matrix_rows.append([])
         matrix_rows.append(["📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL"])
@@ -170,6 +185,6 @@ def export_to_gsheet(event_id: str, event_data: dict) -> str:
         pass
         
     url = sh.url
-    print(f"\n[SUCCESS] Google Sheet creado con Matriz 5x5 y Recomendaciones WTC!")
+    print(f"\n[SUCCESS] Google Sheet creado con Asistente Interactivo de Pairings!")
     print(f"🔗 Enlace directo: {url}", flush=True)
     return url

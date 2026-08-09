@@ -3,6 +3,7 @@ import os
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from src.config import OUTPUT_DIR
 from src.matrix_evaluator import evaluate_5x5_matrix, get_team_pairing_recommendations
@@ -16,11 +17,11 @@ def sanitize_sheet_title(name: str) -> str:
 
 def export_to_excel(event_id: str, event_data: dict, output_filename: str = None) -> str:
     """
-    Genera un libro de Excel (.xlsx) con:
+    Genera un libro de Excel (.xlsx) interactivo con:
     1. Pestaña 'Resumen Torneo'.
     2. Pestaña por cada Equipo Rival con:
-       - MATRIZ DE EMPAREJAMIENTOS 5x5 (Filas: Iberian Mudhorns, Columnas: Rivales).
-       - RECOMENDACIÓN ESTRATÉGICA DE PAIRINGS (2 Escudos / Defensores + 3 Lanzas / Atacantes).
+       - MATRIZ DE EMPAREJAMIENTOS 5x5 TRANSPUESTA (Filas: Iberian Mudhorns, Columnas: Rivales).
+       - ASISTENTE INTERACTIVO CON DESPLEGABLE (Selecciona rival revelado -> Recomienda 2 Atacantes automáticamente con Fórmulas de Excel).
        - LISTAS DETALLADAS DE CADA RIVAL en celdas multilínea.
     """
     if not output_filename:
@@ -41,6 +42,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
     font_points = Font(name='Segoe UI', size=10, bold=True, color='2F5597')
     font_normal = Font(name='Segoe UI', size=10)
     font_bold = Font(name='Segoe UI', size=10, bold=True)
+    font_interactive = Font(name='Segoe UI', size=11, bold=True, color='1F4E78')
     
     font_green = Font(name='Segoe UI', size=10, bold=True, color='276A3C')
     font_yellow = Font(name='Segoe UI', size=10, bold=True, color='B25900')
@@ -50,6 +52,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
     fill_player_header = PatternFill(start_color='2F5597', end_color='2F5597', fill_type='solid')
     fill_matrix_header = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
     fill_recommend_box = PatternFill(start_color='E9EEF4', end_color='E9EEF4', fill_type='solid')
+    fill_interactive_box = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
     fill_zebra = PatternFill(start_color='F2F4F8', end_color='F2F4F8', fill_type='solid')
     
     fill_green = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
@@ -105,7 +108,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_summary.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
     # -------------------------------------------------------------
-    # Pestañas por Cada Equipo (Dashboard 5x5 + Recomendación + Listas)
+    # Pestañas por Cada Equipo (Dashboard 5x5 + Asistente Interactivo)
     # -------------------------------------------------------------
     used_titles = set()
     mudhorns_info = [
@@ -144,8 +147,10 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_team.cell(row=3, column=1, value="🎯 MATRIZ DE EMPAREJAMIENTOS 5x5 (Iberian Mudhorns vs Rival)").font = font_section_title
         
         headers_matrix = ["Jugador Mudhorn", "Perfil / Rol"]
+        rival_nicks = []
         for p_data in players_data:
             r_nick = p_data.get('player_name', 'Rival')
+            rival_nicks.append(r_nick)
             headers_matrix.append(f"vs {r_nick}")
         headers_matrix.append("Balance Net Score")
         
@@ -157,6 +162,20 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             c.border = border_header
             
         m_row = 5
+        # Guardaremos la mejor pareja de atacantes precalculada para cada rival
+        rival_best_attackers = {}
+        
+        for p_data in players_data:
+            r_nick = p_data.get('player_name', 'Rival')
+            eval_matrix = evaluate_5x5_matrix(p_data)
+            # Buscar los 2 atacantes (excluyendo Alzu y Ander que son defensores fijos) con mayor puntaje
+            lanzas_scores = []
+            for m_name in ["Marc", "Koli", "Ale", "Ander"]:
+                lanzas_scores.append((m_name, eval_matrix.get(m_name, {}).get('score', 0)))
+            lanzas_scores.sort(key=lambda x: -x[1])
+            best_two = [lanzas_scores[0][0], lanzas_scores[1][0]]
+            rival_best_attackers[r_nick] = f"{best_two[0]} y {best_two[1]}"
+
         for m_name, m_role in mudhorns_info:
             c_name = ws_team.cell(row=m_row, column=1, value=m_name)
             c_name.font = font_bold
@@ -206,31 +225,59 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             m_row += 1
 
         # ---------------------------------------------------------
-        # BLOQUE B: RECOMENDACIÓN ESTRATÉGICA WTC (DEFENSORES Y LANZAS)
+        # BLOQUE B: ASISTENTE INTERACTIVO DE DECISIÓN DE PAIRINGS (DESPLEGABLE)
         # ---------------------------------------------------------
-        recs = get_team_pairing_recommendations(players_data)
-        d1 = recs['defender_1']
-        d2 = recs['defender_2']
-        atks = ", ".join(recs['attackers'])
-        
         rec_start_row = 11
-        ws_team.cell(row=rec_start_row, column=1, value="🛡️ RECOMENDACIÓN ESTRATÉGICA DE PAIRINGS (WTC)").font = font_section_title
+        ws_team.cell(row=rec_start_row, column=1, value="🎛️ ASISTENTE INTERACTIVO DE PAIRING (TIEMPO REAL EN MESA)").font = font_section_title
         
-        ws_team.cell(row=rec_start_row + 1, column=1, value=f"• 🛡️ Escudo Principal (Defensor #1 a ciegas): {d1}").font = font_bold
-        ws_team.cell(row=rec_start_row + 2, column=1, value=f"• 🛡️ Escudo Secundario (Defensor #2): {d2}").font = font_bold
-        ws_team.cell(row=rec_start_row + 3, column=1, value=f"• ⚔️ Lanzas de Ataque (Especialistas): {atks}").font = font_normal
+        ws_team.cell(row=rec_start_row + 1, column=1, value="• Defensor #1 Fijo (a ciegas): Alzu (Rebeldes)").font = font_bold
+        ws_team.cell(row=rec_start_row + 2, column=1, value="• Defensor #2 Fijo (a ciegas): Ander / Ale").font = font_bold
         
-        for r_offset in range(1, 4):
+        # Fila desplegable interactiva
+        drop_row = rec_start_row + 3
+        ws_team.cell(row=drop_row, column=1, value="1️⃣ Selecciona el Defensor Rival que han revelado:").font = font_interactive
+        
+        c_drop = ws_team.cell(row=drop_row, column=3, value=rival_nicks[0] if rival_nicks else "")
+        c_drop.font = font_bold
+        c_drop.fill = fill_interactive_box
+        c_drop.alignment = align_center
+        c_drop.border = border_header
+
+        # Crear desplegable Data Validation en Excel para la celda C14
+        if rival_nicks:
+            formula_list = '"' + ",".join(rival_nicks) + '"'
+            dv = DataValidation(type="list", formula1=formula_list, allow_blank=False)
+            ws_team.add_data_validation(dv)
+            dv.add(c_drop)
+
+        # Fila de respuesta dinámica
+        resp_row = rec_start_row + 4
+        ws_team.cell(row=resp_row, column=1, value="💡 ATACANTES RECOMENDADOS A OFRECERLES:").font = font_interactive
+        
+        # Construir fórmula IFS / CHOOSE / VLOOKUP de Excel o valor dinámico inicial
+        formula_cases = []
+        for r_nick, best_atks in rival_best_attackers.items():
+            formula_cases.append(f'C{drop_row}="{r_nick}","⚔️ {best_atks}"')
+        excel_formula = f'=IFS({", ".join(formula_cases)})'
+        
+        c_resp = ws_team.cell(row=resp_row, column=3, value=excel_formula)
+        c_resp.font = font_green
+        c_resp.fill = fill_green
+        c_resp.alignment = align_left
+        c_resp.border = border_header
+
+        for r_offset in range(1, 5):
             r_idx = rec_start_row + r_offset
             for c_idx in range(1, len(headers_matrix) + 1):
                 cell_box = ws_team.cell(row=r_idx, column=c_idx)
-                cell_box.fill = fill_recommend_box
+                if not cell_box.fill.start_color.rgb:
+                    cell_box.fill = fill_recommend_box
                 cell_box.border = border_cell
 
         # ---------------------------------------------------------
-        # BLOQUE C: LISTAS DETALLADAS DEL EQUIPO RIVAL (Rows 16+)
+        # BLOQUE C: LISTAS DETALLADAS DEL EQUIPO RIVAL (Rows 17+)
         # ---------------------------------------------------------
-        list_start_row = 16
+        list_start_row = 17
         ws_team.cell(row=list_start_row, column=1, value="📋 LISTAS COMPLETAS DE INTEGRANTES DEL EQUIPO RIVAL").font = font_section_title
         
         header_row = list_start_row + 1
@@ -270,5 +317,5 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.column_dimensions[col_letter].width = 44
 
     wb.save(output_filename)
-    print(f"[+] Libro Excel con Recomendaciones WTC guardado en: {output_filename}")
+    print(f"[+] Libro Excel con Asistente Interactivo guardado en: {output_filename}")
     return output_filename
