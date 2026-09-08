@@ -190,7 +190,11 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=2, column=1, value=f"Configuración: {team_size} Jugadores ({num_shields} Escudos / {num_spears} Lanzas)").font = font_bold
             
             ws_team.cell(row=4, column=1, value="FICHAS DE PERFILADO Y REGLAS DE LISTA (data/event_" + str(event_id) + "_profiles.json)").font = font_section_title
-            prof_headers = ["Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto", "Criterios Favorables (+1)", "Criterios Desfavorables (-1)", "Notas de Experiencia"]
+            prof_headers = [
+                "Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto",
+                "Criterios Favorables (+1)", "Criterios Desfavorables (-1)",
+                "Notas del Jugador / Propuesta", "Asesor Táctico (Advisor IA)"
+            ]
             for c_i, h in enumerate(prof_headers, 1):
                 c = ws_team.cell(row=5, column=c_i, value=h)
                 c.font = font_header; c.fill = fill_team_header; c.alignment = align_center; c.border = border_header
@@ -202,17 +206,31 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 ws_team.cell(row=r_i, column=4, value=p_prof.get('archetype', '')).font = font_normal
                 ws_team.cell(row=r_i, column=5, value=", ".join(p_prof.get('favorable', []))).font = font_green
                 ws_team.cell(row=r_i, column=6, value=", ".join(p_prof.get('unfavorable', []))).font = font_red
-                ws_team.cell(row=r_i, column=7, value=p_prof.get('custom_notes', '')).font = font_normal
-                for c_i in range(1, 8):
+                
+                c7 = ws_team.cell(row=r_i, column=7, value=p_prof.get('custom_notes', ''))
+                c7.font = font_normal
+                c7.alignment = align_top_left
+                
+                c8 = ws_team.cell(row=r_i, column=8, value=p_prof.get('tactical_advisor', ''))
+                c8.font = font_normal
+                c8.alignment = align_top_left
+                
+                ws_team.row_dimensions[r_i].height = 55
+                for c_i in range(1, 9):
                     ws_team.cell(row=r_i, column=c_i).border = border_cell
                     
-            ws_team.cell(row=13, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title
+            prof_col_widths = {1: 12, 2: 24, 3: 20, 4: 32, 5: 28, 6: 28, 7: 48, 8: 48}
+            for c_i, w in prof_col_widths.items():
+                ws_team.column_dimensions[get_column_letter(c_i)].width = w
+                    
+            ws_team.cell(row=14, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title
             for col_idx, p_data in enumerate(players_data, 1):
-                ws_team.cell(row=14, column=col_idx, value=p_data.get('player_name', '')).font = font_player_header
-                ws_team.cell(row=14, column=col_idx).fill = fill_player_header; ws_team.cell(row=14, column=col_idx).border = border_header
-                ws_team.cell(row=15, column=col_idx, value="\n".join(p_data.get('list_lines', []))).font = font_normal
-                ws_team.cell(row=15, column=col_idx).alignment = align_top_left; ws_team.cell(row=15, column=col_idx).border = border_cell
-                ws_team.column_dimensions[get_column_letter(col_idx)].width = 44
+                ws_team.cell(row=15, column=col_idx, value=p_data.get('player_name', '')).font = font_player_header
+                ws_team.cell(row=15, column=col_idx).fill = fill_player_header; ws_team.cell(row=15, column=col_idx).border = border_header
+                ws_team.cell(row=16, column=col_idx, value="\n".join(p_data.get('list_lines', []))).font = font_normal
+                ws_team.cell(row=16, column=col_idx).alignment = align_top_left; ws_team.cell(row=16, column=col_idx).border = border_cell
+                if col_idx > 8:
+                    ws_team.column_dimensions[get_column_letter(col_idx)].width = 44
             continue
 
         # =========================================================

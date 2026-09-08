@@ -64,10 +64,12 @@ def view_profiles_summary(event_id: str, event_data: dict):
         print(f"   Arquetipo: {p.get('archetype')}")
         print(f"   🟢 Favorable vs: {', '.join(p.get('favorable', [])) or 'Estándar'}")
         print(f"   🔴 Desfavorable vs: {', '.join(p.get('unfavorable', [])) or 'Ninguno'}")
-        print(f"   Nota: {p.get('custom_notes')}")
+        print(f"   📝 Notas: {p.get('custom_notes')}")
+        if p.get('tactical_advisor'):
+            print(f"   💡 Advisor Táctico: {p.get('tactical_advisor')}")
         print()
-    print("[TIP] Puedes abrir y editar 'data/event_" + event_id + "_profiles.json' con cualquier editor")
-    print("      para afinar fortalezas y debilidades según vuestra experiencia.")
+    print("[TIP] Puedes editar 'data/event_" + event_id + "_profiles.json' con cualquier editor")
+    print("      o conversar conmigo para afinar notas, fortalezas y debilidades.")
 
 def menu(active_event_id: str):
     while True:
@@ -150,11 +152,11 @@ def menu(active_event_id: str):
                 print("[!] Descarga primero el torneo con la opción 1.")
             else:
                 view_profiles_summary(active_event_id, event_data)
-                regen = input("\n¿Deseas regenerar la ficha limpia predeterminada desde las listas de Longshanks? (s/n): ").strip().lower()
+                regen = input("\n¿Deseas regenerar el análisis táctico y las propuestas de la IA? (s/n)\n(Las notas personalizadas del usuario se preservarán íntegramente): ").strip().lower()
                 if regen == 's':
                     ref_t = config.get('reference_team')
                     generate_default_profiles(active_event_id, event_data, ref_t)
-                    print("[+] Ficha regenerada exitosamente con las listas reales.")
+                    print("[+] Fichas actualizadas exitosamente.")
             input("\nPresiona Enter para volver al menú...")
 
         elif choice == "7":

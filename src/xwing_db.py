@@ -69,59 +69,121 @@ def build_xwing_database(verbose: bool = True) -> dict:
         }
 
     # 2. Extraer bloques de pilotos y cartas de mejora
-    card_chunks = re.split(r'\n\s*\{\s*\n|\n\s*name:\s*\"', content)
+    card_chunks = re.split(r'\n\s*\{\s*\n', content)
     for chunk in card_chunks:
-        name_m = re.search(r'name:\s*\"([^\"]+)\"', chunk) if not chunk.startswith('"') else re.search(r'^([^\"]+)\"', chunk)
+        # Extraer nombre soportando tanto comillas dobles exteriores con apóstrofe interior (ej: "C'ai Threnalli")
+        # como comillas simples exteriores con apóstrofe/comillas interiores (ej: '"Breach"')
+        name_m = re.search(r'name:\s*"([^"\n\r]+)"', chunk) or re.search(r"name:\s*'([^'\n\r]+)'", chunk)
         if not name_m:
             continue
-        c_name = name_m.group(1)
-        addon_m = re.search(r'xwsaddon:\s*\"([^\"]+)\"', chunk)
-        addon = addon_m.group(1) if addon_m else ""
+        raw_name = name_m.group(1).strip()
+        c_name = re.sub(r'^[\'"]+|[\'"]+$', '', raw_name).strip()
         
-        base_xws = canonicalize(c_name)
-        xws_id = f"{base_xws}-{addon}" if addon else base_xws
+        addon_m = re.search(r'xwsaddon:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        addon = addon_m.group(1).strip() if addon_m else ""
         
         skill_m = re.search(r'skill:\s*(\d+)', chunk)
-        slot_m = re.search(r'slot:\s*\"([^\"]+)\"', chunk)
-        ship_m = re.search(r'ship:\s*\"([^\"]+)\"', chunk)
-        faction_m = re.search(r'faction:\s*\"([^\"]+)\"', chunk)
+        slot_m = re.search(r'slot:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        ship_m = re.search(r'ship:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        faction_m = re.search(r'faction:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        
+        base_clean = canonicalize(c_name)
+        no_parens_clean = canonicalize(re.sub(r'\(.*?\)', '', c_name))
         
         if skill_m:
             init = int(skill_m.group(1))
-            ship = canonicalize(ship_m.group(1)) if ship_m else ""
-            faction = canonicalize(faction_m.group(1)) if faction_m else ""
-            pilot_tractor = (base_xws == 'ketsuonyo' or 'tractor' in chunk.lower() or ship in ('quadrijettransferspacetug', 'nantexclassstarfighter'))
+            ship_name = ship_m.group(1).strip() if ship_m else ""
+            ship_clean = canonicalize(ship_name)
+            faction_name = faction_m.group(1).strip() if faction_m else ""
+            faction_clean = canonicalize(faction_name)
+            
+            pilot_tractor = (
+                base_clean in ('ketsuonyo', 'sunfac') or 
+                'tractor' in chunk.lower() or 
+                ship_clean in ('quadrijettransferspacetug', 'nantexclassstarfighter')
+            )
             
             p_data = {
                 'name': c_name,
-                'xws': xws_id,
                 'initiative': init,
-                'ship': ship,
-                'faction': faction,
-                'has_native_tractor': pilot_tractor
+                'ship': ship_clean,
+                'ship_name': ship_name,
+                'faction': faction_clean,
+                'has_native_tractor': pilot_tractor,
+                'addon': addon
             }
-            pilots_db[xws_id] = p_data
-            pilots_db[base_xws] = p_data
-            # Variantes normalizadas sin guiones
-            clean_id = xws_id.replace('-', '')
-            pilots_db[clean_id] = p_data
+            
+            keys_to_index = {
+                base_clean,
+                no_parens_clean,
+            }
+            if addon:
+                add_c = canonicalize(addon)
+                keys_to_index.add(f"{base_clean}-{add_c}")
+                keys_to_index.add(f"{base_clean}{add_c}")
+                keys_to_index.add(f"{no_parens_clean}-{add_c}")
+                keys_to_index.add(f"{no_parens_clean}{add_c}")
+            if ship_clean:
+                keys_to_index.add(f"{base_clean}-{ship_clean}")
+                keys_to_index.add(f"{base_clean}{ship_clean}")
+                keys_to_index.add(f"{no_parens_clean}-{ship_clean}")
+                keys_to_index.add(f"{no_parens_clean}{ship_clean}")
+                # Matices comunes en XWS (ej: eta2actis, tiefighter)
+                if 'eta2' in ship_clean:
+                    keys_to_index.add(f"{no_parens_clean}-eta2actis")
+                    keys_to_index.add(f"{no_parens_clean}eta2actis")
+                if 'starfighter' in ship_clean:
+                    short_s = ship_clean.replace('starfighter', '')
+                    keys_to_index.add(f"{no_parens_clean}-{short_s}")
+                    keys_to_index.add(f"{no_parens_clean}{short_s}")
+                    
+            # Aliases específicos conocidos
+            if base_clean == 'ricoli':
+                keys_to_index.add('ricolie')
+                keys_to_index.add('ricolie-nabooroyaln1starfighter')
+            if 'durge' in base_clean and 'separatist' in faction_clean:
+                keys_to_index.add('durge-separatistalliance')
+                keys_to_index.add('durgeseparatistalliance')
+                
+            for k in keys_to_index:
+                if k:
+                    pilots_db[k] = p_data
                 
         elif slot_m:
-            slot = slot_m.group(1)
-            is_tractor = ('tractor' in xws_id.lower() or 'tractor' in chunk.lower() or 'ensnare' in xws_id.lower())
-            is_bomb = ('bomb' in xws_id.lower() or 'mine' in xws_id.lower() or slot.lower() == 'device')
+            slot = slot_m.group(1).strip()
+            slot_clean = slot.lower()
+            is_tractor = ('tractor' in base_clean or 'tractor' in chunk.lower() or 'ensnare' in base_clean)
+            is_bomb = ('bomb' in base_clean or 'mine' in base_clean or slot_clean == 'device')
+            is_torpedo = (slot_clean == 'torpedo' or 'torpedo' in base_clean)
+            is_missile = (slot_clean == 'missile' or 'missile' in base_clean)
+            is_cannon = (slot_clean == 'cannon' or 'cannon' in base_clean)
+            is_turret = (slot_clean == 'turret' or 'turret' in base_clean)
             
             u_data = {
                 'name': c_name,
-                'xws': xws_id,
                 'slot': slot,
                 'is_tractor': is_tractor,
-                'is_bomb': is_bomb
+                'is_bomb': is_bomb,
+                'is_torpedo': is_torpedo,
+                'is_missile': is_missile,
+                'is_cannon': is_cannon,
+                'is_turret': is_turret
             }
-            upgrades_db[xws_id] = u_data
-            upgrades_db[base_xws] = u_data
-            clean_id = xws_id.replace('-', '')
-            upgrades_db[clean_id] = u_data
+            
+            u_keys = {
+                base_clean,
+                no_parens_clean,
+            }
+            if addon:
+                add_c = canonicalize(addon)
+                u_keys.add(f"{base_clean}-{add_c}")
+                u_keys.add(f"{base_clean}{add_c}")
+                u_keys.add(f"{no_parens_clean}-{add_c}")
+                u_keys.add(f"{no_parens_clean}{add_c}")
+                
+            for k in u_keys:
+                if k:
+                    upgrades_db[k] = u_data
 
     db = {
         'version': 'YASB-canonical-XWA',
