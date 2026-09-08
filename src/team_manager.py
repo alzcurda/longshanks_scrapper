@@ -58,17 +58,14 @@ def extract_list_summary(player_data: dict) -> dict:
         archetype = f"Enjambre de {num_ships} naves ({ship_summary})"
         fav = ["baja_agilidad", "naves_grandes"]
         unfav = ["bombas_masivas"]
-        def_aff = "media"
     elif num_ships <= 3 and num_ships > 0:
         archetype = f"{num_ships} naves pesadas/ases ({pilot_summary})"
         fav = ["pocas_naves", "baja_agilidad"]
         unfav = ["enjambre_5+"]
-        def_aff = "alta" if has_large_ships else "baja"
     else:
         archetype = f"{num_ships} naves ({pilot_summary})"
         fav = ["baja_agilidad", "pocas_naves"]
         unfav = ["bombas_masivas"]
-        def_aff = "alta"
         
     return {
         'num_ships': num_ships,
@@ -78,8 +75,7 @@ def extract_list_summary(player_data: dict) -> dict:
         'ship_summary': ship_summary,
         'archetype': archetype,
         'favorable': fav,
-        'unfavorable': unfav,
-        'defensive_affinity': def_aff
+        'unfavorable': unfav
     }
 
 def detect_tournament_team_size(event_data: dict) -> int:
@@ -192,7 +188,6 @@ def generate_default_profiles(event_id: str, event_data: dict, reference_team_na
             'alias': alias,
             'faction': faction,
             'archetype': summary['archetype'],
-            'defensive_affinity': summary['defensive_affinity'],
             'favorable': summary['favorable'],
             'unfavorable': summary['unfavorable'],
             'custom_notes': f"Lista real: {summary['pilot_summary']}. Edita fortalezas y debilidades según tu experiencia."

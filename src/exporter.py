@@ -190,7 +190,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=2, column=1, value=f"Configuración: {team_size} Jugadores ({num_shields} Escudos / {num_spears} Lanzas)").font = font_bold
             
             ws_team.cell(row=4, column=1, value="FICHAS DE PERFILADO Y REGLAS DE LISTA (data/event_" + str(event_id) + "_profiles.json)").font = font_section_title
-            prof_headers = ["Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto", "Afinidad Defensiva", "Criterios Favorables (+1)", "Criterios Desfavorables (-1)", "Notas de Experiencia"]
+            prof_headers = ["Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto", "Criterios Favorables (+1)", "Criterios Desfavorables (-1)", "Notas de Experiencia"]
             for c_i, h in enumerate(prof_headers, 1):
                 c = ws_team.cell(row=5, column=c_i, value=h)
                 c.font = font_header; c.fill = fill_team_header; c.alignment = align_center; c.border = border_header
@@ -200,11 +200,10 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 ws_team.cell(row=r_i, column=2, value=p_prof.get('player_name', '')).font = font_normal
                 ws_team.cell(row=r_i, column=3, value=p_prof.get('faction', '')).font = font_faction
                 ws_team.cell(row=r_i, column=4, value=p_prof.get('archetype', '')).font = font_normal
-                ws_team.cell(row=r_i, column=5, value=p_prof.get('defensive_affinity', '')).font = font_bold
-                ws_team.cell(row=r_i, column=6, value=", ".join(p_prof.get('favorable', []))).font = font_green
-                ws_team.cell(row=r_i, column=7, value=", ".join(p_prof.get('unfavorable', []))).font = font_red
-                ws_team.cell(row=r_i, column=8, value=p_prof.get('custom_notes', '')).font = font_normal
-                for c_i in range(1, 9):
+                ws_team.cell(row=r_i, column=5, value=", ".join(p_prof.get('favorable', []))).font = font_green
+                ws_team.cell(row=r_i, column=6, value=", ".join(p_prof.get('unfavorable', []))).font = font_red
+                ws_team.cell(row=r_i, column=7, value=p_prof.get('custom_notes', '')).font = font_normal
+                for c_i in range(1, 8):
                     ws_team.cell(row=r_i, column=c_i).border = border_cell
                     
             ws_team.cell(row=13, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title

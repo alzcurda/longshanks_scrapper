@@ -351,7 +351,12 @@ def evaluate_matchup_matrix(profiles_data: dict, rival_players: list) -> dict:
 
 def determine_roles_for_rival_team(profiles_data: dict, rival_players: list) -> dict:
     """
-    Calcula dinámicamente qué jugadores deben ser Escudos y Lanzas frente a ESTE equipo rival concreto.
+    Calcula dinámicamente qué jugadores deben ser Escudos y Lanzas frente a ESTE equipo rival concreto,
+    basándose exclusivamente en la matriz NxN de enfrentamientos contra dicho rival:
+      1. Menor cantidad de cruces rojos (🔴): Prioridad máxima para no ser contra-elegido con cruce desfavorable.
+      2. Menor cantidad de cruces verdes (🟢): Si dos jugadores no tienen rojos, el que tiene muchos verdes
+         se reserva como LANZA ofensiva; el que tiene cruces neutros (🟡) se envía de ESCUDO muro.
+      3. Mayor cantidad de cruces amarillos (🟡): Consistencia y solidez 50-50.
     """
     eval_res = evaluate_matchup_matrix(profiles_data, rival_players)
     matrix = eval_res['matrix']
@@ -363,25 +368,28 @@ def determine_roles_for_rival_team(profiles_data: dict, rival_players: list) -> 
     num_shields = profiles_data.get('num_shields', (team_size - 1) // 2)
     num_spears = profiles_data.get('num_spears', (team_size + 1) // 2)
     
-    affinity_weights = {'muy alta': 3, 'alta': 2, 'media': 1, 'baja': 0}
-    
     player_ranks = []
     for p in players:
         name = p.get('alias') or p.get('player_name')
-        d_score = defensive_scores[name]
         red_count = sum(1 for r_res in matrix[name].values() if r_res['score'] < 0)
-        aff = affinity_weights.get(p.get('defensive_affinity', 'media'), 1)
-        # Ordenación: Menos rojos (prioridad máxima), mayor defensive_score, mayor afinidad defensiva
+        green_count = sum(1 for r_res in matrix[name].values() if r_res['score'] > 0)
+        yellow_count = sum(1 for r_res in matrix[name].values() if r_res['score'] == 0)
+        
         player_ranks.append({
             'profile': p,
             'name': name,
             'reds': red_count,
-            'defensive_score': d_score,
+            'greens': green_count,
+            'yellows': yellow_count,
             'net_score': net_scores[name],
-            'affinity': aff
+            'defensive_score': defensive_scores[name]
         })
         
-    player_ranks.sort(key=lambda x: (x['reds'], -x['defensive_score'], -x['affinity']))
+    # Ordenación para ESCUDOS:
+    # 1. Menos rojos (evitar riesgo a ciegas)
+    # 2. Menos verdes (reservar a los especialistas con verdes para atacar como lanzas)
+    # 3. Más amarillos (máxima solidez 50-50)
+    player_ranks.sort(key=lambda x: (x['reds'], x['greens'], -x['yellows']))
     
     shields = player_ranks[:num_shields]
     spears = player_ranks[num_shields:]

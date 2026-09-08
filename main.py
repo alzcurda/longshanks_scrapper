@@ -62,7 +62,6 @@ def view_profiles_summary(event_id: str, event_data: dict):
     for p in profiles.get('players', []):
         print(f" • {p.get('alias')} ({p.get('player_name')} - {p.get('faction')})")
         print(f"   Arquetipo: {p.get('archetype')}")
-        print(f"   Afinidad defensiva: {p.get('defensive_affinity')}")
         print(f"   🟢 Favorable vs: {', '.join(p.get('favorable', [])) or 'Estándar'}")
         print(f"   🔴 Desfavorable vs: {', '.join(p.get('unfavorable', [])) or 'Ninguno'}")
         print(f"   Nota: {p.get('custom_notes')}")
