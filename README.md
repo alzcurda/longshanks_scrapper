@@ -8,8 +8,10 @@ Herramienta automatizada en **Python** para la extracción, parseo y exportació
 
 - ⚡ **Descarga Multihilo Paralela**: Extrae de forma ágil y respetuosa las listas de todos los integrantes del torneo (~110 jugadores en pocos segundos).
 - 💾 **Almacenamiento Local (Caché JSON)**: Guarda los datos descargados en `data/event_<ID>.json`. Permite modificar el formato o re-procesar los resultados **al instante y sin conexión**, sin volver a hacer peticiones al servidor de Longshanks.
-- 🌐 **Publicación Directa en Google Sheets (API)**: Genera y publica directamente un documento de **Google Sheets online** en tu cuenta de Google Drive listo para compartir mediante un enlace.
-- 📊 **Exportación en Excel (.xlsx)**: Genera una pestaña por equipo y organiza a los integrantes en columnas con la lista completa consolidada en una **única celda multilínea** por participante.
+- ⚡ **Descarga Multihilo Paralela**: Extrae de forma ágil y respetuosa las listas de todos los integrantes del torneo (~140 jugadores en pocos segundos).
+- 💾 **Almacenamiento Local (Caché JSON)**: Guarda los datos descargados en `data/event_<ID>.json`. Permite modificar o re-procesar los resultados **al instante y sin conexión**, sin volver a hacer peticiones al servidor de Longshanks.
+- 📊 **Generación Dinámica de Excel (.xlsx)**: Genera una pestaña por equipo rival con la matriz de emparejamientos $N \times N$, Asistente de Mesa WTC con cálculo automático de Escudos y Lanzas por rival, y las listas completas consolidadas.
+- 🛡️ **Fichas de Perfilado de Listas**: Generación automática de plantillas editables (`data/event_<ID>_profiles.json`) para definir fortalezas y debilidades de las listas de tu equipo sin tocar código Python.
 - 🖥️ **Menú Interactivo CLI**: Interfaz sencilla guiada por opciones o ejecutable mediante banderas de consola.
 
 ---
@@ -18,18 +20,22 @@ Herramienta automatizada en **Python** para la extracción, parseo y exportació
 
 ```text
 Longshanks_scrapper/
-├── data/                         # Almacenamiento local (Caché JSON de eventos descargados)
-│   └── event_36216.json
+├── data/                         # Caché JSON y perfiles de listas descargadas
+│   ├── event_<ID>.json           # Datos raw del torneo (equipos y listas)
+│   ├── event_<ID>_config.json    # Configuración del torneo (equipo de referencia, tamaño)
+│   ├── event_<ID>_profiles.json  # Fichas de listas y reglas de emparejamiento
+│   └── settings.json             # Ajustes de la aplicación (último evento activo)
 ├── output/                       # Archivos Excel (.xlsx) generados localmente
-│   └── event_36216_listas.xlsx
+│   └── event_<ID>_listas.xlsx
 ├── src/
 │   ├── config.py                 # Rutas de carpetas y parámetros HTTP/paralelismo
 │   ├── scraper.py                # Módulo de extracción paralela de Longshanks
-│   ├── storage.py                # Gestión de lectura y escritura del caché JSON local
+│   ├── storage.py                # Gestión de lectura y escritura de caché y ajustes
 │   ├── parser.py                 # Extracción y limpieza del formato XWS (JSON/HTML)
-│   ├── exporter.py               # Generador de libros Excel (.xlsx)
-│   └── gsheet_exporter.py        # Generador y publicador directo a la API de Google Sheets
-├── .gitignore                    # Exclusiones de Git (entorno virtual, temporales)
+│   ├── team_manager.py           # Detección de tamaños 3/5/7, equipo de referencia y fichas
+│   ├── matrix_evaluator.py       # Motor de emparejamientos y asignación dinámica de roles WTC
+│   └── exporter.py               # Generador de libros Excel (.xlsx) con matrices y asistente
+├── .gitignore                    # Exclusiones de Git
 ├── main.py                       # Script principal ejecutable (Menú interactivo / CLI)
 ├── README.md                     # Documentación general del proyecto
 └── requirements.txt              # Dependencias de Python
@@ -55,19 +61,6 @@ py -m venv .venv
 
 ---
 
-## 🔑 Configurar la API de Google Sheets (Opcional)
-
-Para que el script pueda crear documentos de **Google Sheets** directamente en tu cuenta de Google Drive:
-
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/) y crea un proyecto.
-2. Habilita las APIs de **Google Sheets API** y **Google Drive API**.
-3. Descarga tus credenciales:
-   - **OAuth Desktop**: Descarga el archivo JSON, renómbralo como `client_secret.json` y colócalo en la raíz del proyecto.
-   - *O bien* **Service Account**: Descarga el archivo JSON, renómbralo como `credentials.json` y colócalo en la raíz del proyecto.
-4. Al ejecutar la opción de Google Sheets por primera vez, se abrirá tu navegador para hacer clic en **Permitir**. Se guardará la clave `token.json` y los futuros documentos se crearán automáticamente.
-
----
-
 ## 💻 Guía de Uso
 
 ### 1. Menú Interactivo (Recomendado)
@@ -80,22 +73,21 @@ Ejecuta el menú principal sin argumentos:
 Desplegará la consola interactiva:
 ```text
 ====================================================================
- 🏆 LONGSHANKS TOURNAMENT SCRAPPER & DYNAMIC MATRIX GENERATOR
+ 🏆 LONGSHANKS TOURNAMENT SCRAPPER & WTC MATRIX GENERATOR
 ====================================================================
- Torneo Activo:       Evento #36216
+ Torneo Activo:       Evento #37716
  Estado Local:        [DISPONIBLE LOCALMENTE]
- Nuestro Equipo:      Iberian Mudhorns
- Formato de Equipo:   5 Jugadores (2 Escudos / 3 Lanzas)
- Fichas de Listas:    [LISTAS PERFILADAS (5P)]
+ Nuestro Equipo:      Team Spain
+ Formato de Equipo:   7 Jugadores (3 Escudos / 4 Lanzas)
+ Fichas de Listas:    [LISTAS PERFILADAS (7P)]
 --------------------------------------------------------------------
  [1] Descargar/Actualizar datos del torneo desde Longshanks
- [2] Generar GOOGLE SHEET online (Dinámico)
- [3] Flujo Completo: Descargar y Crear GOOGLE SHEET
- [4] Generar copia de respaldo local en Excel (.xlsx) [RECOMENDADO]
- [5] Cambiar ID del evento (Actual: #36216)
- [6] Seleccionar / Cambiar Equipo de Referencia (Nuestro Equipo)
- [7] Ver / Regenerar Fichas de Listas de Nuestro Equipo
- [8] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)
+ [2] Generar archivo Excel (.xlsx) con Matrices y Asistente WTC
+ [3] Flujo Completo: Descargar datos y Generar Excel (.xlsx)
+ [4] Cambiar ID del evento (Actual: #37716)
+ [5] Seleccionar / Cambiar Equipo de Referencia (Nuestro Equipo)
+ [6] Ver / Regenerar Fichas de Listas de Nuestro Equipo
+ [7] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)
  [0] Salir
 ====================================================================
 ```
@@ -104,27 +96,22 @@ Desplegará la consola interactiva:
 
 - **Descargar datos del torneo y guardar en local**:
   ```bash
-  .\.venv\Scripts\python.exe main.py --download --event 36216
+  .\.venv\Scripts\python.exe main.py --download --event 37716
   ```
 
-- **Fijar equipo de referencia y exportar a Excel**:
+- **Generar Excel con el equipo de referencia especificado**:
   ```bash
-  .\.venv\Scripts\python.exe main.py --excel --event 36216 --ref-team "Iberian Mudhorns"
+  .\.venv\Scripts\python.exe main.py --excel --event 37716 --ref-team "Team Spain"
   ```
 
 - **Forzar tamaño de equipo (3, 5 o 7 jugadores)**:
   ```bash
-  .\.venv\Scripts\python.exe main.py --excel --event 36216 --team-size 5
+  .\.venv\Scripts\python.exe main.py --excel --event 37716 --team-size 7
   ```
 
-- **Crear directamente el Google Sheet online**:
+- **Ejecutar el flujo completo (Descarga + Generación de Excel)**:
   ```bash
-  .\.venv\Scripts\python.exe main.py --gsheet --event 36216
-  ```
-
-- **Ejecutar el flujo completo**:
-  ```bash
-  .\.venv\Scripts\python.exe main.py --all --event 36216
+  .\.venv\Scripts\python.exe main.py --all --event 37716
   ```
 
 ---

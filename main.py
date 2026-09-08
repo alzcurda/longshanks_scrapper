@@ -10,7 +10,6 @@ if sys.platform == 'win32':
 
 from src.scraper import download_and_save_event
 from src.exporter import export_to_excel
-from src.gsheet_exporter import export_to_gsheet
 from src.storage import (
     has_local_event_data, load_event_data, get_event_json_path,
     get_event_config_path, get_event_profiles_path, has_event_profiles,
@@ -20,10 +19,11 @@ from src.team_manager import (
     get_or_set_team_config, load_or_create_profiles,
     generate_default_profiles, calculate_roles_distribution
 )
+from src.xwing_db import build_xwing_database
 
 def print_banner():
     print("=" * 68)
-    print(" 🏆 LONGSHANKS TOURNAMENT SCRAPPER & DYNAMIC MATRIX GENERATOR")
+    print(" 🏆 LONGSHANKS TOURNAMENT SCRAPPER & WTC MATRIX GENERATOR")
     print("=" * 68)
 
 def select_reference_team_menu(event_id: str, event_data: dict) -> str:
@@ -93,13 +93,13 @@ def menu(active_event_id: str):
         print(f" Fichas de Listas:    {prof_str}")
         print("-" * 68)
         print(" [1] Descargar/Actualizar datos del torneo desde Longshanks")
-        print(" [2] Generar GOOGLE SHEET online (Dinámico)")
-        print(" [3] Flujo Completo: Descargar y Crear GOOGLE SHEET")
-        print(" [4] Generar copia de respaldo local en Excel (.xlsx) [RECOMENDADO]")
-        print(" [5] Cambiar ID del evento (Actual: #" + active_event_id + ")")
-        print(" [6] Seleccionar / Cambiar Equipo de Referencia (Nuestro Equipo)")
-        print(" [7] Ver / Regenerar Fichas de Listas de Nuestro Equipo")
-        print(" [8] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)")
+        print(" [2] Generar archivo Excel (.xlsx) con Matrices y Asistente WTC")
+        print(" [3] Flujo Completo: Descargar datos y Generar Excel (.xlsx)")
+        print(" [4] Cambiar ID del evento (Actual: #" + active_event_id + ")")
+        print(" [5] Seleccionar / Cambiar Equipo de Referencia (Nuestro Equipo)")
+        print(" [6] Ver / Regenerar Fichas de Listas de Nuestro Equipo")
+        print(" [7] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)")
+        print(" [8] Actualizar Base de Datos canónica de X-Wing (xwing-data2)")
         print(" [0] Salir")
         print("=" * 68)
         
@@ -119,36 +119,19 @@ def menu(active_event_id: str):
                 print("    Utiliza primero la opción 1 para descargarlo de Longshanks.")
             else:
                 data = load_event_data(active_event_id)
-                try:
-                    url = export_to_gsheet(active_event_id, data)
-                    print(f"\n🎉 ¡Google Sheet disponible directamente!")
-                    print(f"🔗 Enlace: {url}")
-                except Exception as e:
-                    print(f"\n[ERROR] {e}")
-            input("\nPresiona Enter para volver al menú...")
-            
-        elif choice == "3":
-            print(f"[*] Ejecutando descarga y creación de Google Sheet para #{active_event_id}...")
-            data = download_and_save_event(active_event_id)
-            get_or_set_team_config(active_event_id, data)
-            try:
-                url = export_to_gsheet(active_event_id, data)
-                print(f"\n🎉 ¡Google Sheet listo!")
-                print(f"🔗 Enlace: {url}")
-            except Exception as e:
-                print(f"\n[ERROR] {e}")
+                out_path = export_to_excel(active_event_id, data)
+                print(f"\n[SUCCESS] Archivo Excel generado en: {out_path}")
             input("\nPresiona Enter para volver al menú...")
 
-        elif choice == "4":
-            if not json_exists:
-                data = download_and_save_event(active_event_id)
-            else:
-                data = load_event_data(active_event_id)
+        elif choice == "3":
+            print(f"[*] Ejecutando descarga completa y generación de Excel para #{active_event_id}...")
+            data = download_and_save_event(active_event_id)
+            get_or_set_team_config(active_event_id, data)
             out_path = export_to_excel(active_event_id, data)
-            print(f"[SUCCESS] Copia en Excel guardada en: {out_path}")
+            print(f"\n[SUCCESS] ¡Flujo completo completado! Excel disponible en: {out_path}")
             input("\nPresiona Enter para volver al menú...")
             
-        elif choice == "5":
+        elif choice == "4":
             new_id = input("Introduce el nuevo ID de evento de Longshanks: ").strip()
             if new_id:
                 active_event_id = new_id
@@ -156,26 +139,26 @@ def menu(active_event_id: str):
                 print(f"[+] Evento activo cambiado y guardado como predeterminado: #{active_event_id}")
             input("\nPresiona Enter para volver al menú...")
 
-        elif choice == "6":
+        elif choice == "5":
             if not json_exists:
                 print("[!] Descarga primero el torneo con la opción 1 para ver los equipos.")
             else:
                 select_reference_team_menu(active_event_id, event_data)
             input("\nPresiona Enter para volver al menú...")
 
-        elif choice == "7":
+        elif choice == "6":
             if not json_exists:
                 print("[!] Descarga primero el torneo con la opción 1.")
             else:
                 view_profiles_summary(active_event_id, event_data)
-                regen = input("\n¿Deseas regenerar la ficha limpia predeterminada? (s/n): ").strip().lower()
+                regen = input("\n¿Deseas regenerar la ficha limpia predeterminada desde las listas de Longshanks? (s/n): ").strip().lower()
                 if regen == 's':
                     ref_t = config.get('reference_team')
                     generate_default_profiles(active_event_id, event_data, ref_t)
-                    print("[+] Ficha regenerada exitosamente.")
+                    print("[+] Ficha regenerada exitosamente con las listas reales.")
             input("\nPresiona Enter para volver al menú...")
 
-        elif choice == "8":
+        elif choice == "7":
             new_ts = input("Introduce el tamaño de los equipos (3, 5 o 7): ").strip()
             if new_ts in ('3', '5', '7'):
                 cfg = get_or_set_team_config(active_event_id, event_data, team_size=int(new_ts))
@@ -187,6 +170,11 @@ def menu(active_event_id: str):
                 print("[!] Tamaño debe ser impar: 3, 5 o 7 jugadores.")
             input("\nPresiona Enter para volver al menú...")
 
+        elif choice == "8":
+            print("[*] Descargando y actualizando base de datos canónica de X-Wing (xwing-data2)...")
+            build_xwing_database(verbose=True)
+            input("\nPresiona Enter para volver al menú...")
+
         elif choice == "0":
             print("¡Hasta pronto!")
             sys.exit(0)
@@ -195,17 +183,21 @@ def menu(active_event_id: str):
             input("\nPresiona Enter para continuar...")
 
 def main():
-    saved_event_id = get_last_active_event("36216")
+    saved_event_id = get_last_active_event("37716")
     parser = argparse.ArgumentParser(description="Longshanks Tournament Scraper & WTC Team Matrix Generator")
     parser.add_argument("--event", type=str, default=None, help=f"ID del evento de Longshanks (actual: #{saved_event_id})")
     parser.add_argument("--ref-team", type=str, default=None, help="Nombre del equipo de referencia (nuestro equipo)")
     parser.add_argument("--team-size", type=int, choices=[3, 5, 7], default=None, help="Número de integrantes (3, 5 o 7)")
     parser.add_argument("--download", action="store_true", help="Descargar de Longshanks y guardar JSON local")
-    parser.add_argument("--gsheet", action="store_true", help="Crear directamente el Google Sheet online")
     parser.add_argument("--excel", action="store_true", help="Generar archivo local en Excel (.xlsx)")
-    parser.add_argument("--all", action="store_true", help="Descargar y generar")
+    parser.add_argument("--all", action="store_true", help="Descargar de Longshanks y generar Excel (.xlsx)")
+    parser.add_argument("--update-db", action="store_true", help="Descargar y compilar base de datos canónica de X-Wing")
     
     args = parser.parse_args()
+    if args.update_db:
+        build_xwing_database(verbose=True)
+        sys.exit(0)
+        
     if args.event:
         event_id = args.event
         set_last_active_event(event_id)
@@ -226,15 +218,9 @@ def main():
     if args.excel or args.all:
         out_path = export_to_excel(event_id, data)
         print(f"[SUCCESS] Excel guardado en: {out_path}")
-        if not args.all:
-            sys.exit(0)
-            
-    if args.gsheet or args.all:
-        url = export_to_gsheet(event_id, data)
-        print(f"\n🔗 Google Sheet URL: {url}")
         sys.exit(0)
         
-    if not (args.download or args.excel or args.gsheet or args.all):
+    if not (args.download or args.excel or args.all or args.update_db):
         menu(event_id)
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
+import os
 import re
 import json
+from src.xwing_db import get_xwing_db
 
 LOW_AGILITY_SHIPS = {
     'yt1300', 'customizedyt1300lightfreighter', 'vcx100lightfreighter', 
@@ -16,18 +18,40 @@ FRAGILE_ACES = {
     'poedameron', 'kylo-ren', 'anakinskywalker'
 }
 
+INITIATIVE_6_PILOTS = {
+    'darthvader', 'soontirfel', 'fennrau', 'wedgeantilles', 'poedameron',
+    'kyloren', 'majorvonreg', 'sunfac', 'corranhorn', 'dashrendar',
+    'quickdraw', 'hansolo', 'bountyrice', 'gideonhask', 'vedfoslo'
+}
+
+INITIATIVE_5_OR_HIGHER = INITIATIVE_6_PILOTS | {
+    'lukeskywalker', 'whisper', 'bobafett', 'guri', 'anakinskywalker',
+    'rey', 'ricolie', 'norrawexley', 'ketsuonyo', 'tomaxbren', 'sharabey'
+}
+
 BOMB_CARDS = {
     'protonbombs', 'seismiccharges', 'bombs', 'concussionbombs', 
     'clustermines', 'proximitymines', 'trajectorysimulator', 'electroprotonbomb'
 }
 
+TRACTOR_SHIPS = {
+    'quadrijettransferspacetug', 'quadjumper', 'nantexclassstarfighter'
+}
+
+TRACTOR_PILOTS = {
+    'ketsuonyo', 'unchakarhut', 'sarco-plank', 'constablezuvio', 'zuvio',
+    'jakkuscavenger', 'guavianenforcer'
+}
+
 TRACTOR_CARDS = {
-    'ensnare', 'tractorbeam', 'shadowcaster', 'tractorarray', 'tractor'
+    'ensnare', 'tractorbeam', 'shadowcaster', 'tractorarray', 
+    'spacetugtractorarray', 'pinpointtractorarray', 'tractor', 'tractortentacles', 'tractortechnicians'
 }
 
 def analyze_rival_list(list_data: dict) -> dict:
     """
-    Analiza a fondo la lista de un rival a partir de su XWS o líneas parseadas.
+    Analiza a fondo la lista de un rival utilizando la base de datos canónica de X-Wing
+    (iniciativas oficiales, agilidad de naves, tamaños, capacidades nativas de tractor, bombas, etc.).
     """
     lines = list_data.get('list_lines', [])
     raw_xws = list_data.get('raw_xws', '')
@@ -35,11 +59,18 @@ def analyze_rival_list(list_data: dict) -> dict:
     num_ships = 0
     bomb_count = 0
     has_aces = False
+    has_i6_aces = False
+    has_i5_plus = False
     has_low_agility = False
     has_tractors = False
     has_small_ships = False
     has_large_ships = False
     all_tokens = set()
+    
+    db = get_xwing_db()
+    pilots_db = db.get('pilots', {})
+    ships_db = db.get('ships', {})
+    upgrades_db = db.get('upgrades', {})
     
     if raw_xws:
         try:
@@ -55,27 +86,80 @@ def analyze_rival_list(list_data: dict) -> dict:
                 all_tokens.add(p_name)
                 all_tokens.add(p_ship)
                 
+                # --- 1. Consulta canónica del piloto en la base de datos ---
+                p_norm = p_id or p_name.replace(' ', '').replace('-', '').replace("'", "")
+                p_info = pilots_db.get(p_norm) or pilots_db.get(p_id) or pilots_db.get(p_name)
+                
+                if p_info:
+                    p_init = p_info.get('initiative', 0)
+                    if p_init == 6:
+                        has_i6_aces = True
+                    if p_init >= 5:
+                        has_i5_plus = True
+                    if p_info.get('has_native_tractor'):
+                        has_tractors = True
+                    if not p_ship and p_info.get('ship'):
+                        p_ship = p_info.get('ship')
+                else:
+                    # Fallback heurístico si no está en la BD
+                    if any(i6 in p_id or i6 in p_name for i6 in INITIATIVE_6_PILOTS):
+                        has_i6_aces = True
+                    if any(i5 in p_id or i5 in p_name for i5 in INITIATIVE_5_OR_HIGHER):
+                        has_i5_plus = True
+                    if p_id in TRACTOR_PILOTS or p_name in TRACTOR_PILOTS or 'ketsu' in p_id:
+                        has_tractors = True
+                        
                 if p_id in FRAGILE_ACES or p_name in FRAGILE_ACES:
                     has_aces = True
-                    
+
+                # --- 2. Consulta canónica de la nave en la base de datos ---
+                s_norm = p_ship.replace(' ', '').replace('-', '').replace("'", "")
+                s_info = ships_db.get(s_norm) or ships_db.get(p_ship)
+                
                 is_high_init_boost = (p_id in HIGH_INIT_BOOST_LARGE_SHIPS or p_name in HIGH_INIT_BOOST_LARGE_SHIPS)
-                if p_ship in LOW_AGILITY_SHIPS and not is_high_init_boost:
-                    has_low_agility = True
-                if p_ship in LOW_AGILITY_SHIPS or is_high_init_boost:
-                    has_large_ships = True
+                
+                if s_info:
+                    agility = s_info.get('agility', 2)
+                    size = str(s_info.get('size', '')).lower()
+                    if agility <= 1 and not is_high_init_boost:
+                        has_low_agility = True
+                    if size in ('large', 'huge') or is_high_init_boost:
+                        has_large_ships = True
+                    elif size == 'small':
+                        has_small_ships = True
+                    if s_info.get('has_native_tractor'):
+                        has_tractors = True
                 else:
-                    has_small_ships = True
-                    
+                    # Fallback heurístico de nave
+                    if p_ship in LOW_AGILITY_SHIPS and not is_high_init_boost:
+                        has_low_agility = True
+                    if p_ship in LOW_AGILITY_SHIPS or is_high_init_boost:
+                        has_large_ships = True
+                    else:
+                        has_small_ships = True
+                    if p_ship in TRACTOR_SHIPS or any(ts in p_ship for ts in TRACTOR_SHIPS):
+                        has_tractors = True
+
+                # --- 3. Consulta canónica de mejoras en la base de datos ---
                 upgrades = p.get('upgrades', {})
                 if isinstance(upgrades, dict):
                     for cat, items in upgrades.items():
                         for item in items:
                             item_clean = str(item).lower()
                             all_tokens.add(item_clean)
-                            if item_clean in BOMB_CARDS or 'bomb' in item_clean or 'mine' in item_clean or 'trajectory' in item_clean:
-                                bomb_count += 1
-                            if item_clean in TRACTOR_CARDS or 'tractor' in item_clean or 'ensnare' in item_clean:
-                                has_tractors = True
+                            
+                            u_norm = item_clean.replace(' ', '').replace('-', '').replace("'", "")
+                            u_info = upgrades_db.get(u_norm) or upgrades_db.get(item_clean)
+                            if u_info:
+                                if u_info.get('is_tractor'):
+                                    has_tractors = True
+                                if u_info.get('is_bomb'):
+                                    bomb_count += 1
+                            else:
+                                if item_clean in BOMB_CARDS or 'bomb' in item_clean or 'mine' in item_clean or 'trajectory' in item_clean:
+                                    bomb_count += 1
+                                if item_clean in TRACTOR_CARDS or 'tractor' in item_clean or 'ensnare' in item_clean or 'shadowcaster' in item_clean:
+                                    has_tractors = True
                                 
             obstacles = data.get('obstacles', [])
             for obs in obstacles:
@@ -94,8 +178,10 @@ def analyze_rival_list(list_data: dict) -> dict:
                 num_ships += 1
             if any(b in line_str for b in BOMB_CARDS):
                 bomb_count += 1
-            if any(t in line_str for t in TRACTOR_CARDS):
+            if any(t in line_str for t in TRACTOR_CARDS) or 'quadrijet' in line_str or 'quadjumper' in line_str or 'ketsu' in line_str or 'ensnare' in line_str:
                 has_tractors = True
+            if any(ace in line_str for ace in FRAGILE_ACES):
+                has_aces = True
             if any(ace in line_str for ace in FRAGILE_ACES):
                 has_aces = True
             if any(ship in line_str for ship in LOW_AGILITY_SHIPS):
@@ -112,6 +198,8 @@ def analyze_rival_list(list_data: dict) -> dict:
         'num_ships': num_ships,
         'bomb_count': bomb_count,
         'has_aces': has_aces,
+        'has_i6_aces': has_i6_aces,
+        'has_i5_plus': has_i5_plus,
         'has_low_agility': has_low_agility,
         'has_tractors': has_tractors,
         'has_small_ships': has_small_ships,
@@ -125,6 +213,14 @@ def match_criterion(criterion: str, traits: dict) -> tuple[bool, str]:
     full_text = traits['full_text']
     tokens = traits['tokens']
     
+    if c in ('iniciativa_alta', 'ases_i6', 'todos_seises', 'naves_i6', 'seises'):
+        if traits.get('has_i6_aces'):
+            return True, 'Ases de Iniciativa 6 en lista rival'
+        return False, ''
+    if c in ('iniciativa_baja', 'iniciativa_menor_5', 'sin_ases', 'menores_de_5'):
+        if not traits.get('has_i5_plus') and traits.get('num_ships', 0) > 0:
+            return True, 'Rival con todas las naves de iniciativa <= 4'
+        return False, ''
     if c in ('bombas_masivas', 'bombas', 'muchas_bombas'):
         if traits['bomb_count'] >= 3:
             return True, f'Saturación de bombas ({traits["bomb_count"]} bombas/minas)'
@@ -137,9 +233,9 @@ def match_criterion(criterion: str, traits: dict) -> tuple[bool, str]:
         if traits['bomb_count'] == 0:
             return True, 'Lista rival sin bombas/minas'
         return False, ''
-    if c in ('enjambre_5+', 'enjambres_5+', 'enjambre_5'):
+    if c in ('enjambres', 'enjambre', 'enjambre_5+', 'enjambres_5+', 'enjambre_5'):
         if traits['num_ships'] >= 5:
-            return True, f'Enjambre de saturación ({traits["num_ships"]} naves)'
+            return True, f'Enjambre rival ({traits["num_ships"]} naves)'
         return False, ''
     if c in ('enjambre_6+', 'enjambres_6+', 'enjambre_6'):
         if traits['num_ships'] >= 6:
@@ -153,9 +249,9 @@ def match_criterion(criterion: str, traits: dict) -> tuple[bool, str]:
         if traits['has_aces']:
             return True, 'Ases frágiles detectados en rival'
         return False, ''
-    if c in ('baja_agilidad', 'naves_lentas'):
+    if c in ('baja_agilidad', 'naves_lentas', 'poca_defensa', 'pocas_defensas', 'sin_defensa'):
         if traits['has_low_agility']:
-            return True, 'Naves de baja agilidad / cargueros lentos'
+            return True, 'Naves de baja agilidad / poca defensa'
         return False, ''
     if c in ('naves_grandes', 'naves_masa'):
         if traits['has_large_ships']:
