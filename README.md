@@ -79,19 +79,25 @@ Ejecuta el menú principal sin argumentos:
 
 Desplegará la consola interactiva:
 ```text
-=================================================================
- 🏆 LONGSHANKS TOURNAMENT SCRAPPER & GOOGLE SHEETS GENERATOR
-=================================================================
- Torneo Activo: Evento #36216
- Estado Local:  [DISPONIBLE LOCALMENTE] (data/event_36216.json)
------------------------------------------------------------------
- [1] Descargar/Actualizar datos del torneo desde Longshanks (Guardar local)
- [2] Generar GOOGLE SHEET directamente online (Instantáneo desde datos locales)
- [3] Flujo Completo: Descargar y Crear GOOGLE SHEET directamente online
- [4] Generar copia de respaldo local en Excel (.xlsx)
+====================================================================
+ 🏆 LONGSHANKS TOURNAMENT SCRAPPER & DYNAMIC MATRIX GENERATOR
+====================================================================
+ Torneo Activo:       Evento #36216
+ Estado Local:        [DISPONIBLE LOCALMENTE]
+ Nuestro Equipo:      Iberian Mudhorns
+ Formato de Equipo:   5 Jugadores (2 Escudos / 3 Lanzas)
+ Fichas de Listas:    [LISTAS PERFILADAS (5P)]
+--------------------------------------------------------------------
+ [1] Descargar/Actualizar datos del torneo desde Longshanks
+ [2] Generar GOOGLE SHEET online (Dinámico)
+ [3] Flujo Completo: Descargar y Crear GOOGLE SHEET
+ [4] Generar copia de respaldo local en Excel (.xlsx) [RECOMENDADO]
  [5] Cambiar ID del evento (Actual: #36216)
+ [6] Seleccionar / Cambiar Equipo de Referencia (Nuestro Equipo)
+ [7] Ver / Regenerar Fichas de Listas de Nuestro Equipo
+ [8] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)
  [0] Salir
-=================================================================
+====================================================================
 ```
 
 ### 2. Comandos Rápidos por Consola (Flags CLI)
@@ -101,20 +107,37 @@ Desplegará la consola interactiva:
   .\.venv\Scripts\python.exe main.py --download --event 36216
   ```
 
+- **Fijar equipo de referencia y exportar a Excel**:
+  ```bash
+  .\.venv\Scripts\python.exe main.py --excel --event 36216 --ref-team "Iberian Mudhorns"
+  ```
+
+- **Forzar tamaño de equipo (3, 5 o 7 jugadores)**:
+  ```bash
+  .\.venv\Scripts\python.exe main.py --excel --event 36216 --team-size 5
+  ```
+
 - **Crear directamente el Google Sheet online**:
   ```bash
   .\.venv\Scripts\python.exe main.py --gsheet --event 36216
-  ```
-
-- **Generar copia local en Excel**:
-  ```bash
-  .\.venv\Scripts\python.exe main.py --excel --event 36216
   ```
 
 - **Ejecutar el flujo completo**:
   ```bash
   .\.venv\Scripts\python.exe main.py --all --event 36216
   ```
+
+---
+
+## 🛡️ Fichas de Perfilado de Jugadores (`data/event_<ID>_profiles.json`)
+
+Al seleccionar tu equipo de referencia, el sistema autogenera una ficha editable con cada uno de los jugadores de tu equipo. En ella puedes ajustar:
+- **Arquetipo y afinidad defensiva**: Estilo de juego y preferencia natural de la lista.
+- **Criterios favorables (`favorable`)**: Palabras clave o arquetipos rivales contra los que la lista puntúa `+1 / 🟢` (ej. `pocas_naves`, `baja_agilidad`, `ases_fragiles`, `sin_bombas`, `naves_grandes`).
+- **Criterios desfavorables (`unfavorable`)**: Factores que penalizan el cruce con `-1 / 🔴` (ej. `bombas_masivas`, `trajectorysimulator`, `enjambre_5+`, `enjambre_6+`, `tractores`).
+- **Notas y Experiencia**: Conocimiento empírico de mesa de los jugadores.
+
+El evaluador recalcula automáticamente la matriz $N \times N$ y reevalúa los roles óptimos (Escudos y Lanzas) frente a cada rival específico.
 
 ---
 
