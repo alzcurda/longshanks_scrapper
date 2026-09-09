@@ -16,7 +16,7 @@ def format_id_to_name(raw_id: str) -> str:
     s = re.sub(r'([a-z])([A-Z])', r'\1 \2', parts)
     return s.title().strip()
 
-from src.xwing_db import get_xwing_db
+from src.xwing_db import get_xwing_db, get_pilot_by_id
 
 def extract_list_summary(player_data: dict, db: dict = None) -> dict:
     if db is None:
@@ -48,11 +48,14 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
         try:
             xws = json.loads(raw_xws)
             for pi in xws.get('pilots', []):
-                pid = str(pi.get('id', '')).lower()
-                p_obj = pilots_db.get(pid) or pilots_db.get(pid.replace('-', ''))
+                pid = str(pi.get('id', '')).lower().strip()
+                s_id = str(pi.get('ship', '')).lower().strip()
+                p_name_raw = str(pi.get('name', '')).strip()
                 
-                s_id = str(pi.get('ship', '')).lower()
+                p_obj = get_pilot_by_id(pid, ship_hint=s_id, name_hint=p_name_raw, db=db)
                 s_obj = ships_db.get(s_id) or ships_db.get(s_id.replace('-', ''))
+                if not s_obj and p_obj and p_obj.get('ship'):
+                    s_obj = ships_db.get(p_obj.get('ship'))
                 
                 p_name = p_obj.get('name') if p_obj else format_id_to_name(pid)
                 p_name = p_name.replace('"', '').strip()
@@ -95,15 +98,28 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
             
     if not pilot_names and lines:
         for l in lines:
-            m = re.match(r'^\d+\.\s*([^(]+)\s*\(([^)]+)\)', l)
+            m = re.match(r'^\d+\.\s*([^(]+)\s*(?:\(([^)]+)\))?', l)
             if m:
-                pilot_names.append(m.group(1).strip())
-                ship_names.append(m.group(2).strip())
-                inits.append(3)
-                agilities.append(2)
-                hulls.append(3)
-                shields.append(1)
-                sizes.append('Small')
+                p_raw = m.group(1).strip()
+                s_raw = m.group(2).strip() if m.group(2) else ""
+                p_obj = get_pilot_by_id("", ship_hint=s_raw, name_hint=p_raw, db=db)
+                s_obj = ships_db.get(p_obj.get('ship', '')) if p_obj else None
+                
+                p_name = p_obj.get('name') if p_obj else p_raw
+                s_name = s_obj.get('name') if s_obj else (s_raw or 'Nave')
+                init = p_obj.get('initiative', 3) if p_obj else 3
+                agil = s_obj.get('agility', 2) if s_obj else 2
+                hull = s_obj.get('hull', 3) if s_obj else 3
+                shield = s_obj.get('shields', 1) if s_obj else 1
+                size = s_obj.get('size', 'Small') if s_obj else 'Small'
+                
+                pilot_names.append(p_name)
+                ship_names.append(s_name)
+                inits.append(init)
+                agilities.append(agil)
+                hulls.append(hull)
+                shields.append(shield)
+                sizes.append(size)
                 
     num_ships = len(pilot_names)
     max_init = max(inits) if inits else 3

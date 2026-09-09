@@ -32,19 +32,28 @@
 
 ---
 
-# REGLAS PARA GENERAR LA MATRIZ DE EMPAREJAMIENTOS (5x5)
+# REGLAS PARA GENERAR LA MATRIZ DE EMPAREJAMIENTOS (ESCALA DE 5 NIVELES: -2 A +2)
 
-Al comparar a un jugador de nuestro equipo contra una lista rival, asigna la etiqueta correspondiente según estas heurísticas:
+Al comparar a un jugador de nuestro equipo contra una lista rival, el motor evalúa los pros y contras acumulativos asignando una puntuación en el rango [-2, +2]:
 
-1. **🟢 Favorable (+1):**
-   - Marc o Koli enfrentándose a 1-2 Ases frágiles (Soontir, Whisper, Boba, etc.) o a naves de silueta grande y agilidad 0-1 (YT-1300, VCX-100, Decimators, BTL-B Y-Wings).
-   - Ale o Ander atacando listas de baja agilidad o naves que dependan de estar agrupadas.
-   - Alzu enfrentándose a listas de pocos disparos pesados o listas sin bombas.
+1. **🟢🟢 Ideal (+2) / Hard Counter a favor:**
+   - Acumulación de 2 o más fortalezas decisivas (ej. Ases I6 vs lista sin ases y con naves grandes de baja agilidad).
+   - Ausencia total de contra-factores o debilidades rivales.
+   - Matchup prioritario para asignar como **Lanza atacante**.
 
-2. **🟡 Igualado (0):**
-   - Enfrentamientos entre listas con perfiles o volúmenes de dados similares (ej. Firesprays vs Firesprays, Ases vs Ases sin ventajas directas).
-   - Emparejamientos estándar donde el resultado depende 100% de la ejecución del jugador y los dados.
+2. **🟢 Favorable (+1):**
+   - Ventaja táctica moderada (ej. mayor volumen de fuego sostenido, ligera ventaja de iniciativa o perfil favorable).
+   - O ventaja neta moderada tras ponderar pros y contras leves.
 
-3. **🔴 Desfavorable (-1):**
-   - Alzu o Ale contra listas de saturación extrema de minas/bombas (ej. 4 Bombarderos TIE/se o Trajectory Simulator).
-   - Marc contra enjambres puros de 6+ naves baratas donde la habilidad de *Midnight* pierde impacto.
+3. **🟡 Igualado (0) / 50-50:**
+   - Enfrentamientos entre listas con perfiles o volúmenes de dados similares.
+   - O listas donde las ventajas tácticas mutuas se contrarrestan.
+   - Perfil ideal para **Escudos defensivos a ciegas**.
+
+4. **🟠 Desfavorable (-1):**
+   - Ligera incomodidad táctica o desventaja de emparejamiento asumible.
+   - El rival tiene algún recurso incómodo pero manejable con buen pilotaje.
+
+5. **🔴🔴 Crítico (-2) / Muy Mal Pairing / Trampa Mortal:**
+   - Hard counter rival directo (ej. saturación masiva de bombas contra listas de baja vida o naves lentas; enjambres masivos de 7+ naves contra listas que dependen de denegación unitaria).
+   - Penalización crítica en el score defensivo: **¡NUNCA enviar de Escudo a ciegas!** Prioridad máxima para proteger al jugador.

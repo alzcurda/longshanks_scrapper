@@ -1,9 +1,11 @@
 import re
 import os
+import json
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.comments import Comment
 
 from src.config import OUTPUT_DIR
 from src.team_manager import (
@@ -37,7 +39,8 @@ def build_spears_formula(def_cell_ref: str, rival_best_spears_map: dict) -> str:
 
 def build_shield_rec_formula(sh_name: str, c_atk1_ref: str, c_atk2_ref: str, sh_eval_map: dict, rival_nicks: list) -> str:
     """
-    Construye una fórmula IF que recomienda el rival con mejor score para el Escudo.
+    Construye una fórmula IF que recomienda el rival con mejor score para el Escudo
+    dentro del rango de 5 niveles: +2 (Ideal), +1 (Favorable), 0 (Igualado), -1 (Desfavorable), -2 (Crítico).
     """
     if not rival_nicks:
         return f'=IF({c_atk1_ref}="", "Esperando asignación", "🛡️ " & {c_atk1_ref})'
@@ -49,12 +52,14 @@ def build_shield_rec_formula(sh_name: str, c_atk1_ref: str, c_atk2_ref: str, sh_
         
     formula = f'"🛡️ Recomendado: " & {c_atk1_ref}'
     for r_a, sc_a in parts:
-        if sc_a >= 1:
-            # Si r_a es favorable (+1), es la mejor opción posible
-            formula = f'IF({c_atk1_ref}="{r_a}", "🛡️ Favorable (+1): {r_a}", {formula})'
-        elif sc_a <= -1:
-            # Si r_a es desfavorable (-1), prefiere el otro atacante
-            formula = f'IF({c_atk1_ref}="{r_a}", "🛡️ Evitar {r_a} -> Elegir: " & {c_atk2_ref}, {formula})'
+        if sc_a == 2:
+            formula = f'IF({c_atk1_ref}="{r_a}", "🟢🟢 ¡Ideal (+2)!: {r_a}", {formula})'
+        elif sc_a == 1:
+            formula = f'IF({c_atk1_ref}="{r_a}", "🟢 Favorable (+1): {r_a}", {formula})'
+        elif sc_a == -2:
+            formula = f'IF({c_atk1_ref}="{r_a}", "⛔ ¡EVITAR (-2) {r_a}! -> Elegir: " & {c_atk2_ref}, {formula})'
+        elif sc_a == -1:
+            formula = f'IF({c_atk1_ref}="{r_a}", "🟠 Desfavorable (-1) -> Preferir: " & {c_atk2_ref}, {formula})'
             
     return f'=IF(OR({c_atk1_ref}="", {c_atk2_ref}=""), "Esperando asignación", {formula})'
 
@@ -85,13 +90,33 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
     font_player_header = Font(name='Segoe UI', size=10, bold=True, color='FFFFFF')
     font_faction = Font(name='Segoe UI', size=9, italic=True, color='595959')
     font_points = Font(name='Segoe UI', size=9, bold=True, color='2F5597')
+    font_link = Font(name='Segoe UI', size=9, bold=True, color='0563C1', underline='single')
     font_normal = Font(name='Segoe UI', size=9)
     font_bold = Font(name='Segoe UI', size=9, bold=True)
     font_interactive = Font(name='Segoe UI', size=9, bold=True, color='1F4E78')
 
-    font_green = Font(name='Segoe UI', size=9, bold=True, color='276A3C')
-    font_yellow = Font(name='Segoe UI', size=9, bold=True, color='B25900')
-    font_red = Font(name='Segoe UI', size=9, bold=True, color='9C0006')
+    # Fuentes y Fills para los 5 niveles de emparejamiento (-2 a +2)
+    font_p2 = Font(name='Segoe UI', size=9, bold=True, color='006100')
+    font_p1 = Font(name='Segoe UI', size=9, bold=True, color='276A3C')
+    font_c0 = Font(name='Segoe UI', size=9, bold=True, color='8C6B00')
+    font_m1 = Font(name='Segoe UI', size=9, bold=True, color='B25900')
+    font_m2 = Font(name='Segoe UI', size=9, bold=True, color='9C0006')
+
+    # Alias de compatibilidad
+    font_green = font_p1
+    font_yellow = font_c0
+    font_red = font_m2
+
+    fill_p2 = PatternFill(start_color='A2D9A2', end_color='A2D9A2', fill_type='solid') # Verde bosque/intenso (+2)
+    fill_p1 = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid') # Verde menta claro (+1)
+    fill_c0 = PatternFill(start_color='FFEB9C', end_color='FFEB9C', fill_type='solid') # Amarillo estándar (0)
+    fill_m1 = PatternFill(start_color='FCE4D6', end_color='FCE4D6', fill_type='solid') # Salmón / Naranja suave (-1)
+    fill_m2 = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid') # Rojo intenso (-2)
+
+    # Alias de compatibilidad
+    fill_green = fill_p1
+    fill_yellow = fill_c0
+    fill_red = fill_m2
 
     fill_team_header = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type='solid')
     fill_player_header = PatternFill(start_color='2F5597', end_color='2F5597', fill_type='solid')
@@ -104,10 +129,6 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
     fill_recommend_box = PatternFill(start_color='E9EEF4', end_color='E9EEF4', fill_type='solid')
     fill_interactive_box = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
     fill_zebra = PatternFill(start_color='F2F4F8', end_color='F2F4F8', fill_type='solid')
-
-    fill_green = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
-    fill_yellow = PatternFill(start_color='FFEB9C', end_color='FFEB9C', fill_type='solid')
-    fill_red = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
 
     thin_side = Side(border_style="thin", color="D9D9D9")
     thick_bottom = Side(border_style="medium", color="1F4E78")
@@ -192,7 +213,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=4, column=1, value="FICHAS DE PERFILADO Y REGLAS DE LISTA (data/event_" + str(event_id) + "_profiles.json)").font = font_section_title
             prof_headers = [
                 "Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto",
-                "Criterios Favorables (+1)", "Criterios Desfavorables (-1)",
+                "Criterios Favorables (🟢 / 🟢🟢)", "Criterios Desfavorables (🟠 / 🔴🔴)",
                 "Notas del Jugador / Propuesta", "Asesor Táctico (Advisor IA)"
             ]
             for c_i, h in enumerate(prof_headers, 1):
@@ -225,10 +246,30 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                     
             ws_team.cell(row=14, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title
             for col_idx, p_data in enumerate(players_data, 1):
-                ws_team.cell(row=15, column=col_idx, value=p_data.get('player_name', '')).font = font_player_header
-                ws_team.cell(row=15, column=col_idx).fill = fill_player_header; ws_team.cell(row=15, column=col_idx).border = border_header
-                ws_team.cell(row=16, column=col_idx, value="\n".join(p_data.get('list_lines', []))).font = font_normal
-                ws_team.cell(row=16, column=col_idx).alignment = align_top_left; ws_team.cell(row=16, column=col_idx).border = border_cell
+                raw_xws = p_data.get('raw_xws', '')
+                yasb_link = ""
+                if raw_xws:
+                    try:
+                        js_x = json.loads(raw_xws)
+                        yasb_link = js_x.get('vendor', {}).get('yasb', {}).get('link') or js_x.get('vendor', {}).get('lbn', {}).get('link') or ""
+                    except Exception:
+                        pass
+
+                c_np = ws_team.cell(row=15, column=col_idx, value=p_data.get('player_name', ''))
+                c_np.font = font_player_header; c_np.fill = fill_player_header; c_np.alignment = align_center; c_np.border = border_header
+
+                c_lp = ws_team.cell(row=16, column=col_idx)
+                if yasb_link:
+                    c_lp.value = "🔗 Abrir lista en YASB"
+                    c_lp.hyperlink = yasb_link
+                    c_lp.font = font_link
+                else:
+                    c_lp.value = ""
+                c_lp.alignment = align_center; c_lp.border = border_cell
+
+                c_tx = ws_team.cell(row=17, column=col_idx, value="\n".join(p_data.get('list_lines', [])))
+                c_tx.font = font_normal; c_tx.alignment = align_top_left; c_tx.border = border_cell
+
                 if col_idx > 8:
                     ws_team.column_dimensions[get_column_letter(col_idx)].width = 44
             continue
@@ -250,7 +291,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         # ---------------------------------------------------------
         # BLOQUE A: MATRIZ DE EMPAREJAMIENTOS NxN
         # ---------------------------------------------------------
-        ws_team.cell(row=3, column=1, value=f"🎯 MATRIZ DE EMPAREJAMIENTOS {team_size}x{len(players_data)} ({ref_team_name} vs {t_name})").font = font_section_title
+        ws_team.cell(row=3, column=1, value=f"🎯 MATRIZ DE EMPAREJAMIENTOS {team_size}x{len(players_data)} ({ref_team_name} vs {t_name})  [🟢🟢 +2 Ideal | 🟢 +1 Favorable | 🟡 0 Parejo | 🟠 -1 Desfavorable | 🔴🔴 -2 Crítico]").font = font_section_title
 
         headers_matrix = ["Jugador", "Arquetipo / Concepto", "Rol vs Rival"]
         for r_nick in rival_nicks:
@@ -287,23 +328,33 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
 
                 c_res = ws_team.cell(row=m_row, column=col_eval, value=f"{sym} ({sc:+d})")
                 c_res.alignment = align_center; c_res.border = border_cell
-                if sc > 0:
-                    c_res.fill = fill_green; c_res.font = font_green
-                elif sc < 0:
-                    c_res.fill = fill_red; c_res.font = font_red
+                if eval_info.get('reason'):
+                    c_res.comment = Comment(eval_info['reason'], "Matriz Táctica")
+                if sc == 2:
+                    c_res.fill = fill_p2; c_res.font = font_p2
+                elif sc == 1:
+                    c_res.fill = fill_p1; c_res.font = font_p1
+                elif sc == -1:
+                    c_res.fill = fill_m1; c_res.font = font_m1
+                elif sc == -2:
+                    c_res.fill = fill_m2; c_res.font = font_m2
                 else:
-                    c_res.fill = fill_yellow; c_res.font = font_yellow
+                    c_res.fill = fill_c0; c_res.font = font_c0
                 col_eval += 1
 
             net = net_scores.get(alias, 0)
             c_bal = ws_team.cell(row=m_row, column=col_eval, value=f"{net:+d}")
             c_bal.font = font_bold; c_bal.alignment = align_center; c_bal.border = border_cell
-            if net > 0:
-                c_bal.fill = fill_green; c_bal.font = font_green
+            if net >= 3:
+                c_bal.fill = fill_p2; c_bal.font = font_p2
+            elif net > 0:
+                c_bal.fill = fill_p1; c_bal.font = font_p1
+            elif net <= -3:
+                c_bal.fill = fill_m2; c_bal.font = font_m2
             elif net < 0:
-                c_bal.fill = fill_red; c_bal.font = font_red
+                c_bal.fill = fill_m1; c_bal.font = font_m1
             else:
-                c_bal.fill = fill_yellow; c_bal.font = font_yellow
+                c_bal.fill = fill_c0; c_bal.font = font_c0
 
             m_row += 1
 
@@ -373,7 +424,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                     spears_formula = f'"⚔️ Lanzas activas restantes Tanda {sh_num}"'
 
             c_rec_sp = ws_team.cell(row=rec_spears_row, column=2, value=spears_formula)
-            c_rec_sp.font = font_green; c_rec_sp.fill = fill_green; c_rec_sp.alignment = align_left; c_rec_sp.border = border_header
+            c_rec_sp.font = font_p1; c_rec_sp.fill = fill_p1; c_rec_sp.alignment = align_left; c_rec_sp.border = border_header
 
             ws_team.cell(row=rec_spears_row, column=3, value=f"• Atacante Rival #{sh_num}B para {sh_name}:").font = font_interactive
             c_r_atk2 = ws_team.cell(row=rec_spears_row, column=4, value=r_atk2_default)
@@ -391,7 +442,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=pick_row, column=3, value=f"💡 Recomendación para {sh_name}:").font = font_interactive
             rec_shield_formula = build_shield_rec_formula(sh_name, f"D{r_def_row}", f"D{rec_spears_row}", matrix.get(sh_name, {}), rival_nicks)
             c_rec_sh = ws_team.cell(row=pick_row, column=4, value=rec_shield_formula)
-            c_rec_sh.font = font_green; c_rec_sh.fill = fill_green; c_rec_sh.alignment = align_left; c_rec_sh.border = border_header
+            c_rec_sh.font = font_p1; c_rec_sh.fill = fill_p1; c_rec_sh.alignment = align_left; c_rec_sh.border = border_header
 
             final_atk_row = curr_rec_row + 5
             ws_team.cell(row=final_atk_row, column=3, value=f"{step3_emoji} Atacante Rival aceptado para {sh_name}:").font = font_interactive
@@ -443,7 +494,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
 
         formula_cruce_completo = f'={formula_lanza_restante} & " vs " & {formula_rival_restante}'
         c_cf_val = ws_team.cell(row=curr_rec_row, column=2, value=formula_cruce_completo)
-        c_cf_val.font = font_bold; c_cf_val.fill = fill_yellow; c_cf_val.alignment = align_left; c_cf_val.border = border_header
+        c_cf_val.font = font_bold; c_cf_val.fill = fill_c0; c_cf_val.alignment = align_left; c_cf_val.border = border_header
 
         curr_rec_row += 3
 
@@ -456,13 +507,23 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         header_row = list_start_row + 1
         faction_row = list_start_row + 2
         points_row = list_start_row + 3
-        content_row = list_start_row + 4
+        link_row = list_start_row + 4
+        content_row = list_start_row + 5
 
         for col_idx, p_data in enumerate(players_data, 1):
             p_name = p_data.get('player_name', 'Jugador')
             faction = p_data.get('faction', 'Sin Facción')
             points = p_data.get('points', '')
             list_lines = p_data.get('list_lines', [])
+            raw_xws = p_data.get('raw_xws', '')
+
+            yasb_link = ""
+            if raw_xws:
+                try:
+                    js_x = json.loads(raw_xws)
+                    yasb_link = js_x.get('vendor', {}).get('yasb', {}).get('link') or js_x.get('vendor', {}).get('lbn', {}).get('link') or ""
+                except Exception:
+                    pass
 
             c_name = ws_team.cell(row=header_row, column=col_idx, value=p_name)
             c_name.font = font_player_header; c_name.fill = fill_player_header; c_name.alignment = align_center; c_name.border = border_header
@@ -472,6 +533,16 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
 
             c_pts = ws_team.cell(row=points_row, column=col_idx, value=f"Total: {points}" if points else "")
             c_pts.font = font_points; c_pts.alignment = align_center; c_pts.border = border_cell
+
+            c_link = ws_team.cell(row=link_row, column=col_idx)
+            if yasb_link:
+                c_link.value = "🔗 Abrir lista en YASB"
+                c_link.hyperlink = yasb_link
+                c_link.font = font_link
+            else:
+                c_link.value = ""
+                c_link.font = font_normal
+            c_link.alignment = align_center; c_link.border = border_cell
 
             full_list_text = "\n".join(list_lines) if list_lines else "Sin lista registrada"
             c_list = ws_team.cell(row=content_row, column=col_idx, value=full_list_text)

@@ -82,13 +82,18 @@ def build_xwing_database(verbose: bool = True) -> dict:
         addon_m = re.search(r'xwsaddon:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
         addon = addon_m.group(1).strip() if addon_m else ""
         
+        explicit_xws_m = re.search(r'xws:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        explicit_xws = explicit_xws_m.group(1).strip() if explicit_xws_m else ""
+        
         skill_m = re.search(r'skill:\s*(\d+)', chunk)
         slot_m = re.search(r'slot:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
         ship_m = re.search(r'ship:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
         faction_m = re.search(r'faction:\s*[\'"]+([^\'"]+)[\'"]+', chunk)
+        points_m = re.search(r'points:\s*(\d+)', chunk)
         
         base_clean = canonicalize(c_name)
-        no_parens_clean = canonicalize(re.sub(r'\(.*?\)', '', c_name))
+        name_parse = c_name.split('(')
+        canonical_name = canonicalize(name_parse[0])
         
         if skill_m:
             init = int(skill_m.group(1))
@@ -96,6 +101,7 @@ def build_xwing_database(verbose: bool = True) -> dict:
             ship_clean = canonicalize(ship_name)
             faction_name = faction_m.group(1).strip() if faction_m else ""
             faction_clean = canonicalize(faction_name)
+            pts = int(points_m.group(1)) if points_m else 0
             
             pilot_tractor = (
                 base_clean in ('ketsuonyo', 'sunfac') or 
@@ -103,47 +109,60 @@ def build_xwing_database(verbose: bool = True) -> dict:
                 ship_clean in ('quadrijettransferspacetug', 'nantexclassstarfighter')
             )
             
+            # --- FÓRMULA OFICIAL DE YASB PARA ASIGNAR EL ID XWS ---
+            if explicit_xws:
+                primary_xws = canonicalize(explicit_xws)
+            elif addon:
+                primary_xws = f"{canonical_name}-{canonicalize(addon)}"
+            elif len(name_parse) > 1 and ship_clean:
+                primary_xws = f"{canonical_name}-{ship_clean}"
+            else:
+                primary_xws = canonical_name
+                
             p_data = {
+                'xws_id': primary_xws,
                 'name': c_name,
                 'initiative': init,
                 'ship': ship_clean,
                 'ship_name': ship_name,
                 'faction': faction_clean,
+                'points': pts,
                 'has_native_tractor': pilot_tractor,
                 'addon': addon
             }
             
+            # Indexación con clave primaria XWS y sus variantes normalizadas
             keys_to_index = {
-                base_clean,
-                no_parens_clean,
+                primary_xws,
+                primary_xws.replace('-', ''),
             }
-            if addon:
-                add_c = canonicalize(addon)
-                keys_to_index.add(f"{base_clean}-{add_c}")
-                keys_to_index.add(f"{base_clean}{add_c}")
-                keys_to_index.add(f"{no_parens_clean}-{add_c}")
-                keys_to_index.add(f"{no_parens_clean}{add_c}")
+            
+            # Soporte bidireccional para abreviaturas de escenarios
+            addon_c = canonicalize(addon)
+            if addon_c == 'battleofyavin':
+                keys_to_index.add(f"{canonical_name}-boy")
+                keys_to_index.add(f"{canonical_name}boy")
+            elif addon_c == 'battleoverendor':
+                keys_to_index.add(f"{canonical_name}-boe")
+                keys_to_index.add(f"{canonical_name}boe")
+            elif addon_c == 'siegeofcoruscant':
+                keys_to_index.add(f"{canonical_name}-soc")
+                keys_to_index.add(f"{canonical_name}soc")
+            elif addon_c == 'evacuationofdqar':
+                keys_to_index.add(f"{canonical_name}-eod")
+                keys_to_index.add(f"{canonical_name}eod")
+            elif addon_c == 'legendsandrelics':
+                keys_to_index.add(f"{canonical_name}-lar")
+                keys_to_index.add(f"{canonical_name}lar")
+                
+            # Combinación explícita (nombre + nave)
             if ship_clean:
-                keys_to_index.add(f"{base_clean}-{ship_clean}")
-                keys_to_index.add(f"{base_clean}{ship_clean}")
-                keys_to_index.add(f"{no_parens_clean}-{ship_clean}")
-                keys_to_index.add(f"{no_parens_clean}{ship_clean}")
-                # Matices comunes en XWS (ej: eta2actis, tiefighter)
-                if 'eta2' in ship_clean:
-                    keys_to_index.add(f"{no_parens_clean}-eta2actis")
-                    keys_to_index.add(f"{no_parens_clean}eta2actis")
-                if 'starfighter' in ship_clean:
-                    short_s = ship_clean.replace('starfighter', '')
-                    keys_to_index.add(f"{no_parens_clean}-{short_s}")
-                    keys_to_index.add(f"{no_parens_clean}{short_s}")
-                    
-            # Aliases específicos conocidos
-            if base_clean == 'ricoli':
-                keys_to_index.add('ricolie')
-                keys_to_index.add('ricolie-nabooroyaln1starfighter')
-            if 'durge' in base_clean and 'separatist' in faction_clean:
-                keys_to_index.add('durge-separatistalliance')
-                keys_to_index.add('durgeseparatistalliance')
+                keys_to_index.add(f"{canonical_name}-{ship_clean}")
+                keys_to_index.add(f"{canonical_name}{ship_clean}")
+                
+            # Clave base simple (solo si es el piloto estándar sin addon)
+            if not addon:
+                keys_to_index.add(canonical_name)
                 
             for k in keys_to_index:
                 if k:
@@ -172,14 +191,14 @@ def build_xwing_database(verbose: bool = True) -> dict:
             
             u_keys = {
                 base_clean,
-                no_parens_clean,
+                canonical_name,
             }
             if addon:
                 add_c = canonicalize(addon)
                 u_keys.add(f"{base_clean}-{add_c}")
                 u_keys.add(f"{base_clean}{add_c}")
-                u_keys.add(f"{no_parens_clean}-{add_c}")
-                u_keys.add(f"{no_parens_clean}{add_c}")
+                u_keys.add(f"{canonical_name}-{add_c}")
+                u_keys.add(f"{canonical_name}{add_c}")
                 
             for k in u_keys:
                 if k:
@@ -226,3 +245,43 @@ def get_xwing_db() -> dict:
             pass
             
     return build_xwing_database(verbose=False)
+
+def get_pilot_by_id(pilot_id: str, ship_hint: str = None, name_hint: str = None, db: dict = None) -> dict | None:
+    """
+    Resuelve con precisión canónica cualquier piloto de X-Wing mediante su ID oficial XWS.
+    Si solo se dispone de texto (sin XWS), utiliza ship_hint y name_hint para reconstruir el ID unívoco.
+    """
+    if db is None:
+        db = get_xwing_db()
+    pilots_db = db.get('pilots', {})
+    
+    p_id_raw = str(pilot_id or '').strip().lower()
+    
+    # 1. Búsqueda directa por ID XWS
+    if p_id_raw:
+        if p_id_raw in pilots_db:
+            return pilots_db[p_id_raw]
+        c_id = canonicalize(p_id_raw)
+        if c_id in pilots_db:
+            return pilots_db[c_id]
+        norm_hyphen = p_id_raw.replace('_', '-').replace(' ', '-')
+        if norm_hyphen in pilots_db:
+            return pilots_db[norm_hyphen]
+            
+    # 2. Búsqueda combinada con ship_hint (crucial para listas de texto plano o desambiguaciones)
+    s_clean = canonicalize(ship_hint) if ship_hint else ""
+    n_clean = canonicalize(name_hint) if name_hint else (canonicalize(p_id_raw) if p_id_raw else "")
+    
+    if n_clean and s_clean:
+        combo_h = f"{n_clean}-{s_clean}"
+        if combo_h in pilots_db:
+            return pilots_db[combo_h]
+        combo_nh = f"{n_clean}{s_clean}"
+        if combo_nh in pilots_db:
+            return pilots_db[combo_nh]
+            
+    # 3. Búsqueda por nombre base
+    if n_clean and n_clean in pilots_db:
+        return pilots_db[n_clean]
+        
+    return None
