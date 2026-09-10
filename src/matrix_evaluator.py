@@ -55,6 +55,31 @@ HIGH_THREAT_JAM_CARDS = {
 
 JAM_CARDS = HIGH_THREAT_JAM_CARDS | {'jammingbeam'}
 
+HEAVY_ORDNANCE_CARDS = {
+    'plasmatorpedoes', 'protontorpedoes', 'advprotontorpedoes', 'advancedprotontorpedoes',
+    'iontorpedoes', 'homingmissiles', 'concussionmissiles', 'clustermissiles',
+    'diamondboronmissiles', 'barragerockets', 'ionmissiles', 'protonrockets'
+}
+
+DOUBLE_ARC_3_DICE_SHIPS = {
+    'firespray31starfighter', 'firespray31',
+    'modifiedyt1300lightfreighter', 'scavengedyt1300', 'customizedyt1300lightfreighter',
+    'yt1300', 'yt1300lightfreighter',
+    'lancerclasspursuitcraft',
+    'gauntletfighter'
+}
+
+ION_CARDS = {
+    'ionbombs', 'iontorpedoes', 'ionmissiles', 'ioncannon',
+    'ioncannonturret', 'connernet', 'connernets', 'pulsedrayshield', 'precisionionengines'
+}
+
+STRESS_CONTROL_CARDS = {
+    '000', 'triplezero', 'rebelcaptive', 'thermaldetonators',
+    'tacticalscrambler', 'r4b11', 'captainphasma', 'phasma',
+    'r3a2', 'stressbot', 'flechettetorpedoes', 'flechettecannon'
+}
+
 def analyze_rival_list(list_data: dict) -> dict:
     """
     Analiza a fondo la lista de un rival utilizando la base de datos canónica de X-Wing
@@ -71,10 +96,34 @@ def analyze_rival_list(list_data: dict) -> dict:
     has_low_agility = False
     has_tractors = False
     has_small_ships = False
+    has_medium_ships = False
     has_large_ships = False
+    all_small_ships = True
     has_jam = False
     has_high_init_jam = False
     jam_sources = []
+    
+    has_ordnance = False
+    ordnance_count = 0
+    ordnance_sources = []
+    
+    has_double_arc_3_dice = False
+    double_arc_sources = []
+    
+    low_hp_count = 0
+    low_hp_points = 0
+    low_hp_ships = []
+    
+    has_ions = False
+    ion_sources = []
+    has_stress_control = False
+    stress_sources = []
+    has_high_init_ordnance = False
+    high_init_ordnance_sources = []
+    
+    has_force = False
+    force_count = 0
+    force_sources = []
     
     i6_count = 0
     i6_points = 0
@@ -146,32 +195,68 @@ def analyze_rival_list(list_data: dict) -> dict:
                 
                 is_high_init_boost = (p_id in HIGH_INIT_BOOST_LARGE_SHIPS or p_name in HIGH_INIT_BOOST_LARGE_SHIPS)
                 
+                ship_hp = 0
                 if s_info:
                     agility = s_info.get('agility', 2)
                     size = str(s_info.get('size', '')).lower()
                     if agility <= 1 and not is_high_init_boost:
                         has_low_agility = True
-                    if size in ('large', 'huge') or is_high_init_boost:
+                    is_large_canonical = any(l in s_norm for l in ('yt1300', 'decimator', 'vcx100', 'lancer', 'ghost', 'falcon', 'houndstooth', 'yv666'))
+                    is_medium_canonical = any(m in s_norm for m in ('firespray', 'arc170', 'reaper', 'st70', 'gauntlet', 'xiclass', 'uwing', 'btlbywing', 'laat'))
+                    if size in ('large', 'huge') or is_high_init_boost or is_large_canonical:
                         has_large_ships = True
+                        all_small_ships = False
+                    elif size == 'medium' or is_medium_canonical:
+                        has_medium_ships = True
+                        all_small_ships = False
                     elif size == 'small':
                         has_small_ships = True
                     if s_info.get('has_native_tractor'):
                         has_tractors = True
+                    ship_hp = s_info.get('hull', 0) + s_info.get('shields', 0)
                 else:
                     # Fallback heurístico de nave
                     if p_ship in LOW_AGILITY_SHIPS and not is_high_init_boost:
                         has_low_agility = True
                     if p_ship in LOW_AGILITY_SHIPS or is_high_init_boost:
                         has_large_ships = True
+                        all_small_ships = False
+                    elif any(med in p_ship for med in ('firespray', 'arc170', 'reaper', 'st70', 'gauntlet', 'xiclass', 'xi-class')):
+                        has_medium_ships = True
+                        all_small_ships = False
                     else:
                         has_small_ships = True
                     if p_ship in TRACTOR_SHIPS or any(ts in p_ship for ts in TRACTOR_SHIPS):
                         has_tractors = True
+                    if any(frag in p_ship for frag in ('tieln', 'tieba', 'tiein', 'awing', 'vwing', 'trifighter', 'vulture', 'z95', 'fang', 'm3a', 'actis')):
+                        ship_hp = 3
+
+                if 0 < ship_hp <= 4:
+                    low_hp_count += 1
+                    low_hp_points += p_pts
+                    pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                    low_hp_ships.append(f"{pilot_label} ({ship_hp} HP)")
+
+                is_double_arc_3 = False
+                if s_norm in DOUBLE_ARC_3_DICE_SHIPS or p_ship in DOUBLE_ARC_3_DICE_SHIPS or any(d in p_ship for d in ('firespray', 'yt1300', 'lancerclass', 'gauntlet')):
+                    is_double_arc_3 = True
+                    has_double_arc_3_dice = True
+                    pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                    ship_label = s_info.get('name', p_ship) if s_info else p_ship
+                    double_arc_sources.append(f"{ship_label} ({pilot_label})")
+
+                # --- 2.5 Detección de usuarios de la Fuerza / Ases Jedi ---
+                is_force = False
+                p_check = (p_id + " " + p_name + " " + p_ship).lower()
+                if any(f in p_check for f in ('jedi', 'delta7', 'eta2', 'actis', 'anakin', 'obiwan', 'plokoon', 'adigallia', 'vader', 'luke', 'yoda', 'inquisitor', 'ahsoka', 'mace', 'saesee', 'luminara', 'barriss', 'asajj', 'ezra', 'kanan', 'kylo')):
+                    is_force = True
 
                 # --- 3. Consulta canónica de mejoras en la base de datos ---
                 upgrades = p.get('upgrades', {})
                 if isinstance(upgrades, dict):
                     for cat, items in upgrades.items():
+                        if 'force' in cat.lower():
+                            is_force = True
                         for item in items:
                             item_clean = str(item).lower()
                             all_tokens.add(item_clean)
@@ -180,6 +265,7 @@ def analyze_rival_list(list_data: dict) -> dict:
                             u_info = upgrades_db.get(u_norm) or upgrades_db.get(item_clean)
                             
                             is_jam = False
+                            is_ordnance = False
                             if u_info:
                                 if u_info.get('is_tractor'):
                                     has_tractors = True
@@ -187,6 +273,9 @@ def analyze_rival_list(list_data: dict) -> dict:
                                     bomb_count += 1
                                 if u_norm in JAM_CARDS or item_clean in JAM_CARDS:
                                     is_jam = True
+                                is_control_missile = ('magpulse' in u_norm or 'magpulse' in item_clean or 'energyshell' in u_norm or 'energyshell' in item_clean)
+                                if not is_control_missile and (u_info.get('is_torpedo') or u_info.get('is_missile') or u_norm in HEAVY_ORDNANCE_CARDS or item_clean in HEAVY_ORDNANCE_CARDS):
+                                    is_ordnance = True
                             else:
                                 if item_clean in BOMB_CARDS or 'bomb' in item_clean or 'mine' in item_clean or 'trajectory' in item_clean:
                                     bomb_count += 1
@@ -194,7 +283,39 @@ def analyze_rival_list(list_data: dict) -> dict:
                                     has_tractors = True
                                 if item_clean in JAM_CARDS or any(j in item_clean for j in ('magpulse', 'enhancedjamming', 'jammingbeam', 'sensorbuoy', 'interferencearray')):
                                     is_jam = True
+                                is_control_missile = ('magpulse' in item_clean or 'energyshell' in item_clean)
+                                if not is_control_missile and (item_clean in HEAVY_ORDNANCE_CARDS or any(o in item_clean for o in ('torpedo', 'plasma', 'concussion', 'homing', 'protonrocket'))):
+                                    is_ordnance = True
                                     
+                            if is_ordnance:
+                                has_ordnance = True
+                                ordnance_count += 1
+                                pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                                upgrade_label = u_info.get('name', item) if u_info else item
+                                ordnance_sources.append(f"{upgrade_label} en {pilot_label}")
+                                if p_init >= 5:
+                                    has_high_init_ordnance = True
+                                    high_init_ordnance_sources.append(f"{upgrade_label} en {pilot_label} (I{p_init})")
+
+                            is_ion = False
+                            ion_pattern = r'\bion(?:cannon|torpedo|missile|bomb|turret|beam|s)?\b|precisionion'
+                            if u_norm in ION_CARDS or item_clean in ION_CARDS or re.search(ion_pattern, item_clean):
+                                is_ion = True
+                            if is_ion:
+                                has_ions = True
+                                pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                                upgrade_label = u_info.get('name', item) if u_info else item
+                                ion_sources.append(f"{upgrade_label} en {pilot_label}")
+
+                            is_stress = False
+                            if u_norm in STRESS_CONTROL_CARDS or item_clean in STRESS_CONTROL_CARDS or any(st in item_clean for st in ('thermal', '000', 'rebelcaptive')):
+                                is_stress = True
+                            if is_stress:
+                                has_stress_control = True
+                                pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                                upgrade_label = u_info.get('name', item) if u_info else item
+                                stress_sources.append(f"{upgrade_label} en {pilot_label}")
+
                             if is_jam:
                                 has_jam = True
                                 pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
@@ -203,6 +324,12 @@ def analyze_rival_list(list_data: dict) -> dict:
                                 is_high_threat = (u_norm in HIGH_THREAT_JAM_CARDS or item_clean in HIGH_THREAT_JAM_CARDS or any(j in item_clean for j in ('magpulse', 'enhancedjamming', 'sensorbuoy', 'interferencearray')))
                                 if p_init >= 5 and is_high_threat:
                                     has_high_init_jam = True
+                                    
+                if is_force:
+                    has_force = True
+                    force_count += 1
+                    pilot_label = p_info.get('name', p_name or p_id) if p_info else (p_name or p_id)
+                    force_sources.append(pilot_label)
                                     
             if total_points == 0:
                 total_points = calc_points
@@ -247,13 +374,23 @@ def analyze_rival_list(list_data: dict) -> dict:
                             has_low_agility = True
                         if sz in ('large', 'huge'):
                             has_large_ships = True
+                            all_small_ships = False
+                        elif sz == 'medium':
+                            has_medium_ships = True
+                            all_small_ships = False
                         elif sz == 'small':
                             has_small_ships = True
+                        shp = s_info.get('hull', 0) + s_info.get('shields', 0)
+                        if 0 < shp <= 4:
+                            low_hp_count += 1
+                            low_hp_points += p_pts
+                            low_hp_ships.append(f"{p_text} ({shp} HP)")
                 else:
                     if any(ship in line_lower for ship in LOW_AGILITY_SHIPS):
                         if not any(hib in line_lower for hib in HIGH_INIT_BOOST_LARGE_SHIPS):
                             has_low_agility = True
                         has_large_ships = True
+                        all_small_ships = False
                         
                 if p_init == 6:
                     has_i6_aces = True
@@ -276,6 +413,21 @@ def analyze_rival_list(list_data: dict) -> dict:
                 jam_sources.append(line_str)
                 if any(hi in line_lower for hi in ('majorvonreg', 'kyloren', 'anakin', 'vader', 'fel', 'soontir')):
                     has_high_init_jam = True
+            if any(d in line_lower for d in ('firespray', 'yt-1300', 'yt1300', 'halcon', 'falcon', 'lancer', 'gauntlet')):
+                has_double_arc_3_dice = True
+                double_arc_sources.append(line_str)
+            if re.search(r'\bion(?:cannon|torpedo|missile|bomb|turret|beam|s)?\b|precisionion', line_lower):
+                has_ions = True
+                ion_sources.append(line_str)
+            if any(s in line_lower for s in ('0-0-0', 'triple zero', 'thermal detonator', 'rebel captive', 'phasma', 'captainphasma', 'captain phasma', 'r3-a2', 'stressbot', 'flechette')):
+                has_stress_control = True
+                stress_sources.append(line_str)
+            if any(o in line_lower for o in ('torpedo', 'plasma', 'concussion', 'homing', 'proton rocket', 'adv. proton')) and 'magpulse' not in line_lower:
+                has_ordnance = True
+                ordnance_sources.append(line_str)
+                if p_init >= 5:
+                    has_high_init_ordnance = True
+                    high_init_ordnance_sources.append(f"{line_str} (I{p_init})")
 
     if num_ships >= 4:
         has_small_ships = True
@@ -291,10 +443,29 @@ def analyze_rival_list(list_data: dict) -> dict:
         'has_low_agility': has_low_agility,
         'has_tractors': has_tractors,
         'has_small_ships': has_small_ships,
+        'has_medium_ships': has_medium_ships,
         'has_large_ships': has_large_ships,
+        'all_small_ships': all_small_ships,
         'has_jam': has_jam,
         'has_high_init_jam': has_high_init_jam,
         'jam_sources': jam_sources,
+        'has_ordnance': has_ordnance,
+        'ordnance_count': ordnance_count,
+        'ordnance_sources': ordnance_sources,
+        'has_double_arc_3_dice': has_double_arc_3_dice,
+        'double_arc_sources': double_arc_sources,
+        'low_hp_count': low_hp_count,
+        'low_hp_points': low_hp_points,
+        'low_hp_ships': low_hp_ships,
+        'has_ions': has_ions,
+        'ion_sources': ion_sources,
+        'has_stress_control': has_stress_control,
+        'stress_sources': stress_sources,
+        'has_high_init_ordnance': has_high_init_ordnance,
+        'high_init_ordnance_sources': high_init_ordnance_sources,
+        'has_force': has_force,
+        'force_count': force_count,
+        'force_sources': force_sources,
         'i6_count': i6_count,
         'i6_points': i6_points,
         'i5_count': i5_count,
@@ -372,8 +543,8 @@ def match_criterion(criterion: str, traits: dict) -> tuple[bool, str]:
         if traits['has_large_ships']:
             return True, 'Presencia de naves grandes'
         return False, ''
-    if c == 'naves_pequenas':
-        if traits['has_small_ships'] and not traits['has_large_ships']:
+    if c in ('naves_pequenas', 'todo_pequenas'):
+        if traits.get('has_small_ships') and traits.get('all_small_ships'):
             return True, 'Lista completa de naves pequeñas'
         return False, ''
     if c == 'sin_grandes':
@@ -383,6 +554,60 @@ def match_criterion(criterion: str, traits: dict) -> tuple[bool, str]:
     if c == 'tractores':
         if traits['has_tractors']:
             return True, 'Tractores / Ensnare en rival'
+        return False, ''
+    if c in ('muchas_iniciativas_altas', 'iniciativas_altas', 'iniciativas_5_6', 'multiples_iniciativas_altas'):
+        i5_plus_count = traits.get('i5_plus_count', 0)
+        i5_plus_points = traits.get('i5_plus_points', 0)
+        i6_count = traits.get('i6_count', 0)
+        if i5_plus_count >= 3 or (i5_plus_count >= 2 and i5_plus_points >= 28) or i6_count >= 2:
+            return True, f"Múltiples iniciativas altas I5-I6 ({i5_plus_count} naves I5+, {i5_plus_points} pts)"
+        return False, ''
+    if c in ('armamento_secundario', 'torpedos_misiles', 'plasmas_torpedos', 'plasmas', 'torpedos', 'ordnance', 'armamento_pesado'):
+        if traits.get('has_ordnance'):
+            sources_txt = "; ".join(traits.get('ordnance_sources', []))
+            return True, f"Armamento secundario pesado ({sources_txt})"
+        return False, ''
+    if c in ('doble_arco_3_dados', 'doble_arco_3', 'doble_arco', 'torreta_pesada', 'torretas_pesadas', 'firespray_halcon', 'firesprays_halcones'):
+        if traits.get('has_double_arc_3_dice'):
+            sources_txt = "; ".join(traits.get('double_arc_sources', []))
+            return True, f"Naves de doble arco / 3 dados ({sources_txt})"
+        return False, ''
+    if c in ('poca_vida', 'naves_poca_vida', 'baja_vida', 'vida_baja', 'naves_fragiles_vida'):
+        count = traits.get('low_hp_count', 0)
+        pts = traits.get('low_hp_points', 0)
+        total_pts = traits.get('total_points', 50)
+        pct = (pts / total_pts * 100) if total_pts > 0 else 0
+        if count >= 2 and (pts >= 18 or pct >= 35.0):
+            ships_summary = "; ".join(traits.get('low_hp_ships', []))
+            return True, f"Naves de poca vida (<=4 HP) por saturación ({count} naves, {pts} pts [{pct:.0f}%]: {ships_summary})"
+        return False, ''
+    if c in ('alpha_strike', 'alpha_strike_i5_i6', 'ordnance_i5_i6'):
+        if traits.get('has_high_init_ordnance'):
+            sources_txt = "; ".join(traits.get('high_init_ordnance_sources', []))
+            return True, f"Alpha Strike I5-I6 con armamento pesado ({sources_txt})"
+        return False, ''
+    if c in ('muchos_seises', 'saturacion_i6', 'muro_i6', 'heavy_i6'):
+        if traits.get('i6_count', 0) >= 2 or traits.get('i6_points', 0) >= 20:
+            return True, f"Múltiples iniciativas 6 ({traits.get('i6_count')} naves I6, {traits.get('i6_points')} pts)"
+        return False, ''
+    if c in ('control_estres', 'estres', 'pone_estres'):
+        if traits.get('has_stress_control'):
+            sources_txt = "; ".join(traits.get('stress_sources', []))
+            return True, f"Control de estrés en rival ({sources_txt})"
+        return False, ''
+    if c in ('iones', 'armas_iones', 'ion'):
+        if traits.get('has_ions'):
+            sources_txt = "; ".join(traits.get('ion_sources', []))
+            return True, f"Armamento de iones ({sources_txt})"
+        return False, ''
+    if c in ('escuadron_4_5', '4_5_naves', 'semienjambre', 'semienjambres'):
+        if traits.get('num_ships', 0) in (4, 5) and not traits.get('has_large_ships'):
+            return True, f"Semienjambre favorable ({traits.get('num_ships')} naves)"
+        return False, ''
+    if c in ('fuerza', 'ases_fuerza', 'fuerza_movilidad', 'pilotos_fuerza', 'fuerza_esquiva'):
+        if traits.get('force_count', 0) >= 2:
+            sources_txt = "; ".join(traits.get('force_sources', []))
+            return True, f"Ases de la Fuerza con alta movilidad y esquiva ({traits.get('force_count')} pilotos: {sources_txt})"
         return False, ''
         
     # Coincidencia directa en tokens o texto
@@ -403,32 +628,81 @@ def evaluate_player_vs_rival(player_profile: dict, rival_player_data: dict, trai
     if traits is None:
         traits = analyze_rival_list(rival_player_data)
         
-    unfav_list = player_profile.get('unfavorable', [])
-    fav_list = player_profile.get('favorable', [])
-    hard_unfav_list = player_profile.get('hard_unfavorable', [])
-    hard_fav_list = player_profile.get('hard_favorable', [])
+    unfav_list = list(player_profile.get('unfavorable', []))
+    fav_list = list(player_profile.get('favorable', []))
+    hard_unfav_list = list(player_profile.get('hard_unfavorable', []))
+    hard_fav_list = list(player_profile.get('hard_favorable', []))
+    vulns = player_profile.get('vulnerabilities', {})
     
     matched_favs = []
     reasons_fav = []
     matched_unfavs = []
     reasons_unfav = []
     
+    # 0. Evaluación de los 5 Checks Comunes de Vulnerabilidad (bombas, estrés, iones, jam, tractores)
+    if vulns:
+        common_check_tags = {
+            'bombas': {'bombas', 'bombas_masivas', 'muchas_bombas', 'trajectorysimulator'},
+            'estres': {'control_estres', 'estres', 'pone_estres'},
+            'iones': {'iones', 'armas_iones', 'ion'},
+            'jam': {'jam', 'interferencias', 'jamming', 'magpulse', 'magpulsewarheads'},
+            'tractores': {'tractores', 'tractor'}
+        }
+        tags_to_filter = set()
+        for tag_set in common_check_tags.values():
+            tags_to_filter.update(tag_set)
+        unfav_list = [u for u in unfav_list if u.lower().strip() not in tags_to_filter]
+
+        if vulns.get('bombas'):
+            if traits.get('bomb_count', 0) >= 2 or 'trajectorysimulator' in traits.get('full_text', ''):
+                cnt = traits.get('bomb_count', 0)
+                if cnt >= 4:
+                    matched_unfavs.append(2.0)
+                    reasons_unfav.append(f"Saturación crítica de bombas ({cnt} bombas/minas)")
+                else:
+                    matched_unfavs.append(1.0)
+                    reasons_unfav.append(f"Vulnerable a bombas ({cnt} bombas/minas)")
+
+        if vulns.get('estres'):
+            if traits.get('has_stress_control'):
+                sources_txt = "; ".join(traits.get('stress_sources', []))
+                matched_unfavs.append(1.0)
+                reasons_unfav.append(f"Vulnerable a control de estrés ({sources_txt})")
+
+        if vulns.get('iones'):
+            if traits.get('has_ions'):
+                sources_txt = "; ".join(traits.get('ion_sources', []))
+                matched_unfavs.append(0.5)
+                reasons_unfav.append(f"Vulnerable a armamento de iones ({sources_txt})")
+
+        if vulns.get('jam'):
+            if traits.get('has_high_init_jam'):
+                sources_txt = "; ".join(traits.get('jam_sources', []))
+                matched_unfavs.append(1.0)
+                reasons_unfav.append(f"Vulnerable a Jamming a alta iniciativa ({sources_txt})")
+            elif traits.get('has_jam'):
+                sources_txt = "; ".join(traits.get('jam_sources', []))
+                matched_unfavs.append(1.0)
+                reasons_unfav.append(f"Vulnerable a Jamming ({sources_txt})")
+
+        if vulns.get('tractores'):
+            if traits.get('has_tractors'):
+                matched_unfavs.append(1.0)
+                reasons_unfav.append("Vulnerable a Haces Tractores / Ensnare")
+
     # 1. Comprobar reglas desfavorables
     for unfav in unfav_list:
         matched, reason = match_criterion(unfav, traits)
         if matched:
-            # Casos especiales de matiz (ej: tractores solo desfavorables si hay naves pequeñas)
-            if unfav == 'tractores' and not traits['has_small_ships']:
-                continue
-            matched_unfavs.append(unfav)
-            reasons_unfav.append(reason)
+            weight = 0.5 if unfav in ('iones', 'armas_iones', 'ion') else 1.0
+            matched_unfavs.append(weight)
+            reasons_unfav.append(f"{reason} (penalización leve 0.5)" if weight == 0.5 else reason)
             
     # Hard counters desfavorables explícitos
     for h_unfav in hard_unfav_list:
         matched, reason = match_criterion(h_unfav, traits)
         if matched:
-            matched_unfavs.append(h_unfav)
-            matched_unfavs.append(h_unfav) # Doble peso
+            matched_unfavs.append(2.0) # Doble peso
             reasons_unfav.append(f"[Hard Counter] {reason}")
 
     # 2. Comprobar reglas favorables
@@ -438,67 +712,69 @@ def evaluate_player_vs_rival(player_profile: dict, rival_player_data: dict, trai
             # Caso especial: pocas naves pero con bombas no es favorable si se busca sin_bombas
             if fav == 'pocas_naves' and traits['bomb_count'] > 0 and 'sin_bombas' in fav_list:
                 continue
-            matched_favs.append(fav)
+            matched_favs.append(1.0)
             reasons_fav.append(reason)
             
     # Hard counters favorables explícitos
     for h_fav in hard_fav_list:
         matched, reason = match_criterion(h_fav, traits)
         if matched:
-            matched_favs.append(h_fav)
-            matched_favs.append(h_fav) # Doble peso
+            matched_favs.append(2.0) # Doble peso
             reasons_fav.append(f"[Hard Counter] {reason}")
 
     # 3. Detección automática de intensidades extremas de X-Wing
     # Rival con 4+ bombas contra jugador sensible a bombas
-    if ('bombas' in unfav_list or 'bombas_masivas' in unfav_list) and traits['bomb_count'] >= 4:
-        if 'Saturación crítica de bombas' not in reasons_unfav:
-            matched_unfavs.append('bombas_criticas')
+    bomb_sensitive = vulns.get('bombas') if vulns else ('bombas' in unfav_list or 'bombas_masivas' in unfav_list)
+    if bomb_sensitive and traits['bomb_count'] >= 4:
+        if not any('bombas' in r.lower() for r in reasons_unfav):
+            matched_unfavs.append(1.0)
             reasons_unfav.append(f"Saturación extrema ({traits['bomb_count']} bombas/minas)")
 
     # Rival con 7+ naves contra jugador que sufre contra enjambres
     if any(e in unfav_list for e in ('enjambres', 'enjambres_6+', 'enjambre_6+')) and traits['num_ships'] >= 7:
         if 'Enjambre masivo' not in reasons_unfav:
-            matched_unfavs.append('enjambre_critico')
+            matched_unfavs.append(1.0)
             reasons_unfav.append(f"Enjambre masivo ({traits['num_ships']} naves)")
 
     # Muro o saturación de Iniciativa 6 (2+ naves I6 o >= 25 pts en I6) contra jugador alérgico a I6
-    if any(u in unfav_list for u in ('ases_i6', 'iniciativa_alta', 'seises', 'naves_i6')) and (traits['i6_count'] >= 2 or traits['i6_points'] >= 25):
+    if any(u in unfav_list for u in ('ases_i6', 'iniciativa_alta', 'seises', 'naves_i6', 'muchos_seises')) and (traits['i6_count'] >= 2 or traits['i6_points'] >= 25):
         if 'saturacion_i6' not in matched_unfavs:
-            matched_unfavs.append('saturacion_i6')
+            matched_unfavs.append(1.0)
             reasons_unfav.append(f"Muro de Iniciativa 6 ({traits['i6_count']} naves I6, {traits['i6_points']} pts)")
 
     # Balance de puntuación
-    fav_points = len(matched_favs)
-    unfav_points = len(matched_unfavs)
+    fav_points = sum(matched_favs)
+    unfav_points = sum(matched_unfavs)
     balance = fav_points - unfav_points
     
-    if balance >= 2:
+    if balance >= 1.5:
         score = 2
         symbol = '🟢🟢'
         reason = f"Ideal (+2): {'; '.join(reasons_fav)}"
         if reasons_unfav:
             reason += f" (Ojo con: {'; '.join(reasons_unfav)})"
-    elif balance == 1:
+    elif balance >= 0.5:
         score = 1
         symbol = '🟢'
         reason = f"Favorable (+1): {'; '.join(reasons_fav)}"
         if reasons_unfav:
             reason += f" (Matiz rival: {'; '.join(reasons_unfav)})"
-    elif balance == 0:
+    elif balance >= -0.5:
         score = 0
         symbol = '🟡'
         if reasons_fav and reasons_unfav:
             reason = f"Equilibrado (0): Pros ({'; '.join(reasons_fav)}) compensados por ({'; '.join(reasons_unfav)})"
+        elif reasons_unfav:
+            reason = f"Equilibrado (0): Amenaza leve ({'; '.join(reasons_unfav)})"
         else:
             reason = "Igualado (Enfrentamiento estándar / 50-50)"
-    elif balance == -1:
+    elif balance > -1.5:
         score = -1
         symbol = '🟠'
         reason = f"Desfavorable (-1): {'; '.join(reasons_unfav)}"
         if reasons_fav:
             reason += f" (A favor: {'; '.join(reasons_fav)})"
-    else: # balance <= -2
+    else: # balance <= -1.5
         score = -2
         symbol = '🔴🔴'
         reason = f"Crítico (-2): {'; '.join(reasons_unfav)}"

@@ -225,6 +225,26 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
                 "que entre en tu alcance reciba al menos 2-3 ataques combinados."
             )
             
+    # Heurística de vulnerabilidades comunes (Checks: bombas, estrés, iones, jam, tractores)
+    low_hp_count = sum(1 for h, s in zip(hulls, shields) if (h + s) <= 4)
+    small_ships_count = sum(1 for sz in sizes if sz == 'Small')
+    
+    # Tractores: penaliza a cazas pequeños ágiles; naves medianas/grandes son inmunes a 1 ficha
+    vuln_tractores = (small_ships_count >= 2 and large_med_count <= 1)
+    # Bombas: penaliza a enjambres (6+ naves) o listas con muchas naves frágiles (3-4 HP)
+    vuln_bombas = (num_ships >= 6 or low_hp_count >= 3)
+    vuln_estres = False
+    vuln_iones = False
+    vuln_jam = False
+
+    vulnerabilities = {
+        'bombas': vuln_bombas,
+        'estres': vuln_estres,
+        'iones': vuln_iones,
+        'jam': vuln_jam,
+        'tractores': vuln_tractores
+    }
+
     return {
         'num_ships': num_ships,
         'pilot_names': pilot_names,
@@ -236,6 +256,7 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
         'archetype': archetype,
         'favorable': fav,
         'unfavorable': unfav,
+        'vulnerabilities': vulnerabilities,
         'proposal_note': prop,
         'advisor_note': advisor
     }
@@ -378,6 +399,7 @@ def generate_default_profiles(event_id: str, event_data: dict, reference_team_na
             # PREVALENCIA DE LAS NOTAS Y CRITERIOS DEL USUARIO
             fav = p_existing.get('favorable', summary['favorable'])
             unfav = p_existing.get('unfavorable', summary['unfavorable'])
+            vuln = p_existing.get('vulnerabilities', summary['vulnerabilities'])
             custom_notes = p_existing.get('custom_notes')
             archetype = p_existing.get('archetype') or summary['archetype']
             fav_str = ", ".join(fav)
@@ -392,6 +414,7 @@ def generate_default_profiles(event_id: str, event_data: dict, reference_team_na
             # PRIMERA PROPUESTA AUTOMÁTICA DE LA IA
             fav = summary['favorable']
             unfav = summary['unfavorable']
+            vuln = summary['vulnerabilities']
             archetype = summary['archetype']
             custom_notes = summary['proposal_note']
             advisor = summary['advisor_note']
@@ -403,6 +426,7 @@ def generate_default_profiles(event_id: str, event_data: dict, reference_team_na
             'archetype': archetype,
             'favorable': fav,
             'unfavorable': unfav,
+            'vulnerabilities': vuln,
             'custom_notes': custom_notes,
             'tactical_advisor': advisor
         })

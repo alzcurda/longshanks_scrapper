@@ -64,6 +64,19 @@ def view_profiles_summary(event_id: str, event_data: dict):
         print(f"   Arquetipo: {p.get('archetype')}")
         print(f"   🟢 Favorable vs: {', '.join(p.get('favorable', [])) or 'Estándar'}")
         print(f"   🔴 Desfavorable vs: {', '.join(p.get('unfavorable', [])) or 'Ninguno'}")
+        
+        vulns = p.get('vulnerabilities', {})
+        if vulns:
+            v_labels = [
+                ('bombas', '💣 Bombas'),
+                ('estres', '⚡ Estrés'),
+                ('iones', '🔵 Iones'),
+                ('jam', '📡 Jam'),
+                ('tractores', '🧲 Tractores')
+            ]
+            v_parts = [f"[{lbl}: {'⚠️ Afecta' if vulns.get(k) else '🛡️ Inmune'}]" for k, lbl in v_labels]
+            print(f"   🛡️ Checks: {' '.join(v_parts)}")
+            
         print(f"   📝 Notas: {p.get('custom_notes')}")
         if p.get('tactical_advisor'):
             print(f"   💡 Advisor Táctico: {p.get('tactical_advisor')}")

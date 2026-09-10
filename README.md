@@ -120,8 +120,9 @@ Desplegará la consola interactiva:
 
 Al seleccionar tu equipo de referencia, el sistema autogenera una ficha editable con cada uno de los jugadores de tu equipo. En ella puedes ajustar:
 - **Arquetipo y afinidad defensiva**: Estilo de juego y preferencia natural de la lista.
-- **Criterios favorables (`favorable`)**: Palabras clave o arquetipos rivales contra los que la lista puntúa `+1 / 🟢` (ej. `pocas_naves`, `baja_agilidad`, `ases_fragiles`, `sin_bombas`, `naves_grandes`).
-- **Criterios desfavorables (`unfavorable`)**: Factores que penalizan el cruce con `-1 / 🔴` (ej. `bombas_masivas`, `trajectorysimulator`, `enjambre_5+`, `enjambre_6+`, `tractores`).
+- **Criterios favorables (`favorable`)**: Cosas que suman. Palabras clave o arquetipos rivales contra los que la lista puntúa `+1 / 🟢` (ej. `iniciativa_baja`, `pocas_naves`, `baja_agilidad`, `enjambres`, `poca_vida`).
+- **Criterios desfavorables (`unfavorable`)**: Cosas que restan. Factores tácticos que penalizan con `-1 / 🔴` (ej. `ases_i6`, `iniciativas_altas`, `armamento_secundario`, `alpha_strike`, `fuerza`).
+- **Checks de Vulnerabilidades (`vulnerabilities`)**: 5 checks booleanos universales de control y amenazas de X-Wing (`bombas`, `estres`, `iones`, `jam`, `tractores`). Si se marca en `true`, el motor penaliza automáticamente si el rival lleva ese tipo de herramientas; si se marca en `false`, el motor ignora dicha amenaza (resistencia o inmunidad).
 - **Notas y Experiencia**: Conocimiento empírico de mesa de los jugadores.
 
 El evaluador recalcula automáticamente la matriz $N \times N$ y reevalúa los roles óptimos (Escudos y Lanzas) frente a cada rival específico.

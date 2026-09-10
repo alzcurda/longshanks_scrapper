@@ -214,13 +214,16 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             prof_headers = [
                 "Alias", "Nombre Completo", "Facción", "Arquetipo / Concepto",
                 "Criterios Favorables (🟢 / 🟢🟢)", "Criterios Desfavorables (🟠 / 🔴🔴)",
+                "Checks Vulnerabilidades (Control)",
                 "Notas del Jugador / Propuesta", "Asesor Táctico (Advisor IA)"
             ]
             for c_i, h in enumerate(prof_headers, 1):
                 c = ws_team.cell(row=5, column=c_i, value=h)
                 c.font = font_header; c.fill = fill_team_header; c.alignment = align_center; c.border = border_header
                 
+            last_prof_row = 5
             for r_i, p_prof in enumerate(our_players, 6):
+                last_prof_row = r_i
                 ws_team.cell(row=r_i, column=1, value=p_prof.get('alias', '')).font = font_bold
                 ws_team.cell(row=r_i, column=2, value=p_prof.get('player_name', '')).font = font_normal
                 ws_team.cell(row=r_i, column=3, value=p_prof.get('faction', '')).font = font_faction
@@ -228,23 +231,42 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 ws_team.cell(row=r_i, column=5, value=", ".join(p_prof.get('favorable', []))).font = font_green
                 ws_team.cell(row=r_i, column=6, value=", ".join(p_prof.get('unfavorable', []))).font = font_red
                 
-                c7 = ws_team.cell(row=r_i, column=7, value=p_prof.get('custom_notes', ''))
+                vulns = p_prof.get('vulnerabilities', {})
+                if vulns:
+                    v_labels = [
+                        ('bombas', '💣 Bombas'),
+                        ('estres', '⚡ Estrés'),
+                        ('iones', '🔵 Iones'),
+                        ('jam', '📡 Jam'),
+                        ('tractores', '🧲 Tractores')
+                    ]
+                    v_parts = [f"{lbl}: {'⚠️' if vulns.get(k) else '🛡️'}" for k, lbl in v_labels]
+                    c7_val = "\n".join(v_parts)
+                else:
+                    c7_val = "Estándar"
+                    
+                c7 = ws_team.cell(row=r_i, column=7, value=c7_val)
                 c7.font = font_normal
                 c7.alignment = align_top_left
                 
-                c8 = ws_team.cell(row=r_i, column=8, value=p_prof.get('tactical_advisor', ''))
+                c8 = ws_team.cell(row=r_i, column=8, value=p_prof.get('custom_notes', ''))
                 c8.font = font_normal
                 c8.alignment = align_top_left
                 
-                ws_team.row_dimensions[r_i].height = 55
-                for c_i in range(1, 9):
+                c9 = ws_team.cell(row=r_i, column=9, value=p_prof.get('tactical_advisor', ''))
+                c9.font = font_normal
+                c9.alignment = align_top_left
+                
+                ws_team.row_dimensions[r_i].height = 80
+                for c_i in range(1, 10):
                     ws_team.cell(row=r_i, column=c_i).border = border_cell
                     
-            prof_col_widths = {1: 12, 2: 24, 3: 20, 4: 32, 5: 28, 6: 28, 7: 48, 8: 48}
+            prof_col_widths = {1: 12, 2: 24, 3: 20, 4: 32, 5: 28, 6: 28, 7: 22, 8: 48, 9: 48}
             for c_i, w in prof_col_widths.items():
                 ws_team.column_dimensions[get_column_letter(c_i)].width = w
                     
-            ws_team.cell(row=14, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title
+            lists_title_row = last_prof_row + 2
+            ws_team.cell(row=lists_title_row, column=1, value="LISTAS COMPLETAS DE NUESTROS INTEGRANTES").font = font_section_title
             for col_idx, p_data in enumerate(players_data, 1):
                 raw_xws = p_data.get('raw_xws', '')
                 yasb_link = ""
@@ -255,10 +277,10 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                     except Exception:
                         pass
 
-                c_np = ws_team.cell(row=15, column=col_idx, value=p_data.get('player_name', ''))
+                c_np = ws_team.cell(row=lists_title_row + 1, column=col_idx, value=p_data.get('player_name', ''))
                 c_np.font = font_player_header; c_np.fill = fill_player_header; c_np.alignment = align_center; c_np.border = border_header
 
-                c_lp = ws_team.cell(row=16, column=col_idx)
+                c_lp = ws_team.cell(row=lists_title_row + 2, column=col_idx)
                 if yasb_link:
                     c_lp.value = "🔗 Abrir lista en YASB"
                     c_lp.hyperlink = yasb_link
@@ -267,7 +289,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                     c_lp.value = ""
                 c_lp.alignment = align_center; c_lp.border = border_cell
 
-                c_tx = ws_team.cell(row=17, column=col_idx, value="\n".join(p_data.get('list_lines', [])))
+                c_tx = ws_team.cell(row=lists_title_row + 3, column=col_idx, value="\n".join(p_data.get('list_lines', [])))
                 c_tx.font = font_normal; c_tx.alignment = align_top_left; c_tx.border = border_cell
 
                 if col_idx > 8:
