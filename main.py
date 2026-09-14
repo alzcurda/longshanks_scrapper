@@ -13,7 +13,8 @@ from src.exporter import export_to_excel
 from src.storage import (
     has_local_event_data, load_event_data, get_event_json_path,
     get_event_config_path, get_event_profiles_path, has_event_profiles,
-    load_event_profiles, get_last_active_event, set_last_active_event
+    load_event_profiles, get_last_active_event, set_last_active_event,
+    has_event_schedule, load_event_schedule
 )
 from src.team_manager import (
     get_or_set_team_config, load_or_create_profiles,
@@ -84,6 +85,31 @@ def view_profiles_summary(event_id: str, event_data: dict):
     print("[TIP] Puedes editar 'data/event_" + event_id + "_profiles.json' con cualquier editor")
     print("      o conversar conmigo para afinar notas, fortalezas y debilidades.")
 
+def view_schedule_summary(event_id: str):
+    if not has_event_schedule(event_id):
+        print(f"[!] No hay calendario registrado para el evento #{event_id}.")
+        return
+    sched = load_event_schedule(event_id)
+    ref_team = sched.get('reference_team', 'Nuestro Equipo')
+    print(f"\n📅 CALENDARIO Y MISIONES OFICIALES (X-WING 2.5 WTC) - EVENTO #{event_id}")
+    print(f"   Equipo de Referencia: {ref_team}")
+    print("=" * 68)
+    for rnd in sched.get('rounds', []):
+        r_num = rnd.get('round_number')
+        m_name = rnd.get('mission_name')
+        m_name_es = rnd.get('mission_name_es')
+        sp_opp = rnd.get('spain_opponent')
+        sc = rnd.get('scenario_details', {})
+        print(f" • [RONDA {r_num}] 🎯 Cruce: {ref_team} vs {sp_opp}")
+        print(f"             📍 Misión: {m_name} ({m_name_es})")
+        print(f"             🎯 Objetivos: {sc.get('objectives_layout')}")
+        print(f"             💡 Problemática Táctica: {sc.get('tactical_impact')}")
+        print(f"             🛡️ Asesoría Selección: {sc.get('team_spain_advice')}")
+        pairings = rnd.get('pairings', [])
+        p_strs = [f"{p.get('team_a')} vs {p.get('team_b')}" for p in pairings]
+        print(f"             📋 Mesas del Grupo: {' | '.join(p_strs)}")
+        print("-" * 68)
+
 def menu(active_event_id: str):
     while True:
         print_banner()
@@ -99,12 +125,15 @@ def menu(active_event_id: str):
         
         has_prof = has_event_profiles(active_event_id)
         prof_str = f"[LISTAS PERFILADAS ({t_size}P)]" if has_prof else "[SIN PERFILAR]"
+        has_sched = has_event_schedule(active_event_id)
+        sched_str = "[CALENDARIO CONFIGURADO]" if has_sched else "[SIN CALENDARIO]"
         
         print(f" Torneo Activo:       Evento #{active_event_id}")
         print(f" Estado Local:        {status_str}")
         print(f" Nuestro Equipo:      {ref_team}")
         print(f" Formato de Equipo:   {t_size} Jugadores ({n_shields} Escudos / {n_spears} Lanzas)")
         print(f" Fichas de Listas:    {prof_str}")
+        print(f" Calendario Rondas:   {sched_str}")
         print("-" * 68)
         print(" [1] Descargar/Actualizar datos del torneo desde Longshanks")
         print(" [2] Generar archivo Excel (.xlsx) con Matrices y Asistente WTC")
@@ -114,10 +143,11 @@ def menu(active_event_id: str):
         print(" [6] Ver / Regenerar Fichas de Listas de Nuestro Equipo")
         print(" [7] Ajustar tamaño de equipo manualmente (3, 5 o 7 jugadores)")
         print(" [8] Actualizar Base de Datos canónica de X-Wing (xwing-data2)")
+        print(" [9] Ver Calendario de Rondas y Análisis de Misiones (X-Wing 2.5)")
         print(" [0] Salir")
         print("=" * 68)
         
-        choice = input("Selecciona una opción [0-8]: ").strip()
+        choice = input("Selecciona una opción [0-9]: ").strip()
         print()
         
         if choice == "1":
@@ -187,6 +217,10 @@ def menu(active_event_id: str):
         elif choice == "8":
             print("[*] Descargando y actualizando base de datos canónica de X-Wing (xwing-data2)...")
             build_xwing_database(verbose=True)
+            input("\nPresiona Enter para volver al menú...")
+
+        elif choice == "9":
+            view_schedule_summary(active_event_id)
             input("\nPresiona Enter para volver al menú...")
 
         elif choice == "0":

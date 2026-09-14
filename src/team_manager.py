@@ -137,7 +137,7 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
     if num_ships >= 7:
         archetype = f"Enjambre puro ({num_ships} naves: {ship_summary})"
         fav = ["pocas_naves", "baja_agilidad", "naves_grandes"]
-        unfav = ["bombas_masivas", "ases_i6"]
+        unfav = ["bombas_masivas", "iniciativas_altas"]
         prop = (
             f"[Propuesta IA] Enjambre masivo de {num_ships} naves enfocado en control de tablero, "
             f"bloqueos a iniciativa baja y saturación de fuego ({num_ships*2}+ dados de ataque). "
@@ -199,11 +199,11 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
         elif high_inits >= 3:
             archetype = f"Escuadrón de media/alta iniciativa ({pilot_summary})"
             fav = ["iniciativa_baja", "poca_defensa", "enjambres"]
-            unfav = ["ases_i6", "tractores"]
+            unfav = ["iniciativas_altas", "tractores"]
             prop = (
                 f"[Propuesta IA] Escuadrón de {num_ships} naves con núcleo dominante de iniciativa 5. "
                 f"Favorable vs rivales de iniciativa <= 4 y naves con pocas defensas a las que castiga antes de que disparen. "
-                f"Desfavorable vs Ases I6 que muevan después y listas con tractores. "
+                f"Desfavorable vs superioridad de iniciativas altas (I5-I6) y listas con tractores. "
                 f"(Edita fortalezas y debilidades según tu experiencia con el jugador)"
             )
             advisor = (
@@ -213,7 +213,7 @@ def extract_list_summary(player_data: dict, db: dict = None) -> dict:
         else:
             archetype = f"Escuadrón equilibrado de {num_ships} naves ({pilot_summary})"
             fav = ["baja_agilidad", "naves_grandes"]
-            unfav = ["ases_i6", "bombas_masivas"]
+            unfav = ["iniciativas_altas", "bombas_masivas"]
             prop = (
                 f"[Propuesta IA] Lista versátil de {num_ships} naves con {total_hp} HP y gran consistencia de disparos a rango medio. "
                 f"Favorable vs naves grandes y de baja agilidad por desgaste sostenido. "
@@ -424,6 +424,7 @@ def generate_default_profiles(event_id: str, event_data: dict, reference_team_na
             'alias': alias,
             'faction': faction,
             'archetype': archetype,
+            'max_init': summary.get('max_init', 5),
             'favorable': fav,
             'unfavorable': unfav,
             'vulnerabilities': vuln,

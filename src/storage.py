@@ -109,3 +109,28 @@ def set_last_active_event(event_id: str) -> None:
     settings["active_event_id"] = str(event_id).strip()
     save_settings(settings)
 
+def get_event_schedule_path(event_id: str) -> str:
+    """Devuelve la ruta del archivo de calendario y misiones del evento."""
+    return os.path.join(DATA_DIR, f"event_{event_id}_schedule.json")
+
+def has_event_schedule(event_id: str) -> bool:
+    """Comprueba si existe archivo de calendario y misiones para el evento."""
+    path = get_event_schedule_path(event_id)
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
+def save_event_schedule(event_id: str, schedule: dict) -> str:
+    """Guarda el calendario y misiones del evento en JSON."""
+    path = get_event_schedule_path(event_id)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(schedule, f, ensure_ascii=False, indent=2)
+    return path
+
+def load_event_schedule(event_id: str) -> dict:
+    """Carga el calendario y misiones del evento desde JSON."""
+    path = get_event_schedule_path(event_id)
+    if not os.path.exists(path):
+        return {}
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+

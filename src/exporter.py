@@ -12,6 +12,7 @@ from src.team_manager import (
     load_or_create_profiles, get_or_set_team_config, calculate_roles_distribution
 )
 from src.matrix_evaluator import determine_roles_for_rival_team
+from src.storage import load_event_schedule
 
 STEP_EMOJIS = {
     1: "1️⃣", 2: "2️⃣", 3: "3️⃣", 4: "4️⃣", 5: "5️⃣",
@@ -107,30 +108,31 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
     font_yellow = font_c0
     font_red = font_m2
 
-    fill_p2 = PatternFill(start_color='A2D9A2', end_color='A2D9A2', fill_type='solid') # Verde bosque/intenso (+2)
-    fill_p1 = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid') # Verde menta claro (+1)
-    fill_c0 = PatternFill(start_color='FFEB9C', end_color='FFEB9C', fill_type='solid') # Amarillo estándar (0)
-    fill_m1 = PatternFill(start_color='FCE4D6', end_color='FCE4D6', fill_type='solid') # Salmón / Naranja suave (-1)
-    fill_m2 = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid') # Rojo intenso (-2)
+    fill_p2 = PatternFill(start_color='FFA2D9A2', end_color='FFA2D9A2', fill_type='solid') # Verde bosque/intenso (+2)
+    fill_p1 = PatternFill(start_color='FFC6EFCE', end_color='FFC6EFCE', fill_type='solid') # Verde menta claro (+1)
+    fill_c0 = PatternFill(start_color='FFFFEB9C', end_color='FFFFEB9C', fill_type='solid') # Amarillo estándar (0)
+    fill_m1 = PatternFill(start_color='FFFCE4D6', end_color='FFFCE4D6', fill_type='solid') # Salmón / Naranja suave (-1)
+    fill_m2 = PatternFill(start_color='FFFFC7CE', end_color='FFFFC7CE', fill_type='solid') # Rojo intenso (-2)
 
     # Alias de compatibilidad
     fill_green = fill_p1
     fill_yellow = fill_c0
     fill_red = fill_m2
 
-    fill_team_header = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type='solid')
-    fill_player_header = PatternFill(start_color='2F5597', end_color='2F5597', fill_type='solid')
-    fill_matrix_header = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
+    fill_team_header = PatternFill(start_color='FF1F4E78', end_color='FF1F4E78', fill_type='solid')
+    fill_player_header = PatternFill(start_color='FF2F5597', end_color='FF2F5597', fill_type='solid')
+    fill_matrix_header = PatternFill(start_color='FF366092', end_color='FF366092', fill_type='solid')
     fill_tanda_headers = [
-        PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid'), # Tanda 1 Azul
-        PatternFill(start_color='C55A11', end_color='C55A11', fill_type='solid'), # Tanda 2 Naranja
-        PatternFill(start_color='7030A0', end_color='7030A0', fill_type='solid'), # Tanda 3 Púrpura
+        PatternFill(start_color='FF2E75B6', end_color='FF2E75B6', fill_type='solid'), # Tanda 1 Azul
+        PatternFill(start_color='FFC55A11', end_color='FFC55A11', fill_type='solid'), # Tanda 2 Naranja
+        PatternFill(start_color='FF7030A0', end_color='FF7030A0', fill_type='solid'), # Tanda 3 Púrpura
     ]
-    fill_recommend_box = PatternFill(start_color='E9EEF4', end_color='E9EEF4', fill_type='solid')
-    fill_interactive_box = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
-    fill_zebra = PatternFill(start_color='F2F4F8', end_color='F2F4F8', fill_type='solid')
+    fill_card_content = PatternFill(start_color='FFDCE1E7', end_color='FFDCE1E7', fill_type='solid')   # Gris suave antifatiga visible
+    fill_zebra = PatternFill(start_color='FFCFD6DC', end_color='FFCFD6DC', fill_type='solid')          # Fila alterna gris suave
+    fill_recommend_box = PatternFill(start_color='FFCBD2D9', end_color='FFCBD2D9', fill_type='solid')  # Panel WTC gris neutro
+    fill_interactive_box = PatternFill(start_color='FFBAC4CE', end_color='FFBAC4CE', fill_type='solid')# Desplegable interactivo
 
-    thin_side = Side(border_style="thin", color="D9D9D9")
+    thin_side = Side(border_style="thin", color="8A96A3")
     thick_bottom = Side(border_style="medium", color="1F4E78")
     border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
     border_header = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thick_bottom)
@@ -170,8 +172,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             for col_num in range(1, 6):
                 c = ws_summary.cell(row=current_row, column=col_num)
                 c.border = border_cell
-                if current_row % 2 == 0:
-                    c.fill = fill_zebra
+                c.fill = fill_zebra if current_row % 2 == 0 else fill_card_content
             current_row += 1
 
     for col in ws_summary.columns:
@@ -180,9 +181,160 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         ws_summary.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
     # -------------------------------------------------------------
+    # Pestaña 2: Calendario y Misiones del Torneo (Rondas 1 a 5)
+    # -------------------------------------------------------------
+    schedule_data = load_event_schedule(event_id)
+    used_titles = set(["Resumen Torneo"])
+
+    if schedule_data and schedule_data.get('rounds'):
+        sched_title = "Calendario y Misiones"
+        ws_sched = wb.create_sheet(title=sched_title)
+        used_titles.add(sched_title)
+        ws_sched.views.sheetView[0].showGridLines = True
+
+        ws_sched.cell(row=1, column=1, value=f"Longshanks Event #{event_id} - Calendario de Rondas y Misiones Oficiales (X-Wing 2.5)").font = font_title
+        ws_sched.cell(row=2, column=1, value=f"Equipo de Referencia: {ref_team_name} | Emparejamientos y Problemática Táctica por Escenario WTC").font = font_bold
+
+        # TABLA 1: Hoja de Ruta de Team Spain
+        ws_sched.cell(row=4, column=1, value=f"🎯 HOJA DE RUTA DE {ref_team_name.upper()} (EMPAREJAMIENTO Y MISIÓN POR RONDA)").font = font_section_title
+        sched_headers = ["Ronda", "Rival de España", "Misión / Escenario", "Formato de Objetivos", "Problemática Táctica para la Selección", "Asesoría para Lanzas y Escudos"]
+        for c_idx, h in enumerate(sched_headers, 1):
+            c = ws_sched.cell(row=5, column=c_idx, value=h)
+            c.font = font_header; c.fill = fill_team_header; c.alignment = align_center; c.border = border_header
+
+        curr_s_row = 6
+        for rnd in schedule_data.get('rounds', []):
+            r_num = f"Ronda {rnd.get('round_number')}"
+            r_opp = rnd.get('spain_opponent', '')
+            r_mis = f"{rnd.get('mission_name')} ({rnd.get('mission_name_es')})"
+            sc_det = rnd.get('scenario_details', {})
+            r_lay = sc_det.get('objectives_layout', '')
+            r_imp = sc_det.get('tactical_impact', '')
+            r_adv = sc_det.get('team_spain_advice', '')
+
+            fill_row = fill_zebra if curr_s_row % 2 == 0 else fill_card_content
+
+            c1 = ws_sched.cell(row=curr_s_row, column=1, value=r_num)
+            c1.font = font_bold; c1.alignment = align_center; c1.fill = fill_row; c1.border = border_cell
+
+            c2 = ws_sched.cell(row=curr_s_row, column=2, value=r_opp)
+            c2.font = font_bold; c2.alignment = align_center; c2.fill = fill_row; c2.border = border_cell
+
+            c3 = ws_sched.cell(row=curr_s_row, column=3, value=r_mis)
+            c3.font = font_interactive; c3.fill = fill_row; c3.border = border_cell
+
+            c4 = ws_sched.cell(row=curr_s_row, column=4, value=r_lay)
+            c4.font = font_normal; c4.fill = fill_row; c4.border = border_cell
+
+            c5 = ws_sched.cell(row=curr_s_row, column=5, value=r_imp)
+            c5.font = font_normal; c5.fill = fill_row; c5.border = border_cell
+
+            c6 = ws_sched.cell(row=curr_s_row, column=6, value=r_adv)
+            c6.font = font_bold; c6.fill = fill_row; c6.border = border_cell
+
+            curr_s_row += 1
+
+        # TABLA 2: Cuadrante de Emparejamientos por Ronda (Grupo)
+        curr_s_row += 2
+        ws_sched.cell(row=curr_s_row, column=1, value="📋 CUADRANTE DE EMPAREJAMIENTOS DEL GRUPO (RONDAS 1 A 5)").font = font_section_title
+        curr_s_row += 1
+
+        grid_headers = ["Ronda", "Misión del Escenario", "Mesa 1", "Mesa 2", "Mesa 3"]
+        for c_idx, h in enumerate(grid_headers, 1):
+            c = ws_sched.cell(row=curr_s_row, column=c_idx, value=h)
+            c.font = font_header; c.fill = fill_matrix_header; c.alignment = align_center; c.border = border_header
+        curr_s_row += 1
+
+        for rnd in schedule_data.get('rounds', []):
+            fill_row = fill_zebra if curr_s_row % 2 == 0 else fill_card_content
+            r_num = f"Ronda {rnd.get('round_number')}"
+            r_mis = f"{rnd.get('mission_name')} ({rnd.get('mission_name_es')})"
+            pairings = rnd.get('pairings', [])
+
+            c1 = ws_sched.cell(row=curr_s_row, column=1, value=r_num)
+            c1.font = font_bold; c1.alignment = align_center; c1.fill = fill_row; c1.border = border_cell
+
+            c2 = ws_sched.cell(row=curr_s_row, column=2, value=r_mis)
+            c2.font = font_interactive; c2.fill = fill_row; c2.border = border_cell
+
+            for p_idx, pair in enumerate(pairings[:3], 3):
+                t_a = pair.get('team_a', '')
+                t_b = pair.get('team_b', '')
+                pair_str = f"{t_a} vs. {t_b}"
+                is_spain_pair = ('spain' in t_a.lower() or 'spain' in t_b.lower())
+                if is_spain_pair:
+                    pair_str = f"🎯 {pair_str}"
+
+                cp = ws_sched.cell(row=curr_s_row, column=p_idx, value=pair_str)
+                cp.font = font_bold if is_spain_pair else font_normal
+                cp.alignment = align_center
+                cp.fill = fill_p1 if is_spain_pair else fill_row
+                cp.border = border_cell
+            curr_s_row += 1
+
+        # TABLA 3: Guía Táctica de los 5 Escenarios (X-Wing 2.5 WTC)
+        curr_s_row += 2
+        ws_sched.cell(row=curr_s_row, column=1, value="📖 GUÍA TÁCTICA DE ESCENARIOS (X-WING 2.5 WTC)").font = font_section_title
+        curr_s_row += 1
+
+        guide_headers = ["Escenario", "Mecánica de Puntuación", "Problemática Clave", "Listas de 3 Naves", "Enjambres (6-8 Naves)", "Recomendación para Selección"]
+        for c_idx, h in enumerate(guide_headers, 1):
+            c = ws_sched.cell(row=curr_s_row, column=c_idx, value=h)
+            c.font = font_header; c.fill = fill_team_header; c.alignment = align_center; c.border = border_header
+        curr_s_row += 1
+
+        impacts_3_ships = {
+            1: "Muy Desfavorable: Dividirse en 5 satélites regala naves aisladas. Obligados a volar en grupo cerrado y forzar aniquilación temprana antes de perder en puntos.",
+            2: "Desfavorable: Cargar una caja en una nave pesada/as le quita el 33% del ataque o maniobra. Ignorar cajas al inicio y matar rápido a las mulas enemigas.",
+            3: "Manejable: Solo 3 satélites en la línea central neutral. El combate es compacto y no hay que dispersarse por las esquinas.",
+            4: "Neutro: Balizas con acción R1. Para España es Ronda de Descanso (BYE).",
+            5: "ÓPTIMO / IDEAL (+2): 95% combate puro. No hay dispersión ni transporte de cajas. Volar en bloque y aniquilar en el primer cruce frontal."
+        }
+
+        impacts_swarms = {
+            1: "ÓPTIMO / IDEAL (+2): Destinar 2 naves baratas a satélites exteriores puntúa 2-3 VP/turno pasivos mientras 6 naves traban al enemigo en el centro.",
+            2: "Favorable: Dispone de múltiples naves baratas (mulas de 9-11 pts) para recoger y proteger cajas sin comprometer el ataque del escuadrón.",
+            3: "Favorable: Naves de I1 bloquean físicamente sobre los satélites o deniegan el paso a los ases enemigos antes de interactuar.",
+            4: "Favorable: Múltiples fuentes de acción para activar balizas.",
+            5: "Desfavorable (-1): Pierden la ventaja de puntos pasivos por objetivos. Cada nave barata derribada regala puntos en la carrera directa de daño."
+        }
+
+        for rnd in schedule_data.get('rounds', []):
+            fill_row = fill_zebra if curr_s_row % 2 == 0 else fill_card_content
+            sc = rnd.get('scenario_details', {})
+            r_id = rnd.get('round_number')
+            m_title = f"Ronda {r_id}:\n{rnd.get('mission_name')}\n({rnd.get('mission_name_es')})"
+
+            c1 = ws_sched.cell(row=curr_s_row, column=1, value=m_title)
+            c1.font = font_bold; c1.alignment = align_center; c1.fill = fill_row; c1.border = border_cell
+
+            c2 = ws_sched.cell(row=curr_s_row, column=2, value=sc.get('scoring_mechanics', ''))
+            c2.font = font_normal; c2.alignment = align_top_left; c2.fill = fill_row; c2.border = border_cell
+
+            c3 = ws_sched.cell(row=curr_s_row, column=3, value=sc.get('tactical_impact', ''))
+            c3.font = font_normal; c3.alignment = align_top_left; c3.fill = fill_row; c3.border = border_cell
+
+            c4 = ws_sched.cell(row=curr_s_row, column=4, value=impacts_3_ships.get(r_id, ''))
+            c4.font = font_faction; c4.alignment = align_top_left; c4.fill = fill_row; c4.border = border_cell
+
+            c5 = ws_sched.cell(row=curr_s_row, column=5, value=impacts_swarms.get(r_id, ''))
+            c5.font = font_faction; c5.alignment = align_top_left; c5.fill = fill_row; c5.border = border_cell
+
+            c6 = ws_sched.cell(row=curr_s_row, column=6, value=sc.get('team_spain_advice', ''))
+            c6.font = font_bold; c6.alignment = align_top_left; c6.fill = fill_row; c6.border = border_cell
+
+            curr_s_row += 1
+
+        ws_sched.column_dimensions['A'].width = 18
+        ws_sched.column_dimensions['B'].width = 30
+        ws_sched.column_dimensions['C'].width = 34
+        ws_sched.column_dimensions['D'].width = 34
+        ws_sched.column_dimensions['E'].width = 40
+        ws_sched.column_dimensions['F'].width = 44
+
+    # -------------------------------------------------------------
     # Pestañas por Cada Equipo Rival
     # -------------------------------------------------------------
-    used_titles = set(["Resumen Torneo"])
 
     for team in event_data.get('teams', []):
         t_name = team.get('team_name', 'Equipo')
@@ -224,6 +376,8 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             last_prof_row = 5
             for r_i, p_prof in enumerate(our_players, 6):
                 last_prof_row = r_i
+                fill_row = fill_zebra if r_i % 2 == 0 else fill_card_content
+
                 ws_team.cell(row=r_i, column=1, value=p_prof.get('alias', '')).font = font_bold
                 ws_team.cell(row=r_i, column=2, value=p_prof.get('player_name', '')).font = font_normal
                 ws_team.cell(row=r_i, column=3, value=p_prof.get('faction', '')).font = font_faction
@@ -259,7 +413,9 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 
                 ws_team.row_dimensions[r_i].height = 80
                 for c_i in range(1, 10):
-                    ws_team.cell(row=r_i, column=c_i).border = border_cell
+                    c = ws_team.cell(row=r_i, column=c_i)
+                    c.border = border_cell
+                    c.fill = fill_row
                     
             prof_col_widths = {1: 12, 2: 24, 3: 20, 4: 32, 5: 28, 6: 28, 7: 22, 8: 48, 9: 48}
             for c_i, w in prof_col_widths.items():
@@ -287,10 +443,10 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                     c_lp.font = font_link
                 else:
                     c_lp.value = ""
-                c_lp.alignment = align_center; c_lp.border = border_cell
+                c_lp.fill = fill_card_content; c_lp.alignment = align_center; c_lp.border = border_cell
 
                 c_tx = ws_team.cell(row=lists_title_row + 3, column=col_idx, value="\n".join(p_data.get('list_lines', [])))
-                c_tx.font = font_normal; c_tx.alignment = align_top_left; c_tx.border = border_cell
+                c_tx.font = font_normal; c_tx.fill = fill_card_content; c_tx.alignment = align_top_left; c_tx.border = border_cell
 
                 if col_idx > 8:
                     ws_team.column_dimensions[get_column_letter(col_idx)].width = 44
@@ -299,7 +455,37 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         # =========================================================
         # EQUIPO RIVAL: EVALUACIÓN NxN Y ASISTENTE DINÁMICO WTC
         # =========================================================
-        ws_team.cell(row=1, column=1, value=f"Equipo Rival: {t_name}").font = font_title
+        scheduled_rnd = None
+        if schedule_data and schedule_data.get('rounds'):
+            norm_t = t_name.strip().lower()
+            for r_entry in schedule_data['rounds']:
+                sp_opp = r_entry.get('spain_opponent', '').strip().lower()
+                if sp_opp and (sp_opp == norm_t or sp_opp in norm_t or norm_t in sp_opp):
+                    scheduled_rnd = r_entry
+                    break
+
+        if scheduled_rnd:
+            r_num = scheduled_rnd.get('round_number')
+            m_name = scheduled_rnd.get('mission_name')
+            m_name_es = scheduled_rnd.get('mission_name_es')
+            sc_info = scheduled_rnd.get('scenario_details', {})
+            
+            c_t1 = ws_team.cell(row=1, column=1, value=f"⚔️ EQUIPO RIVAL: {t_name.upper()} | 🎯 CRUCE OFICIAL: RONDA {r_num} vs {ref_team_name.upper()}")
+            c_t1.font = font_title
+            
+            c_m = ws_team.cell(row=2, column=1, value=f"📍 Misión Oficial: {m_name} ({m_name_es}) — Objetivos: {sc_info.get('objectives_layout', '')}")
+            c_m.font = font_bold
+            
+            c_tip = ws_team.cell(row=3, column=1, value=f"💡 Problemática Táctica: {sc_info.get('tactical_impact', '')}")
+            c_tip.font = font_faction
+            
+            c_adv = ws_team.cell(row=4, column=1, value=f"🛡️ Asesoría para Selección: {sc_info.get('team_spain_advice', '')}")
+            c_adv.font = font_interactive
+            
+            start_matrix_title_row = 6
+        else:
+            ws_team.cell(row=1, column=1, value=f"Equipo Rival: {t_name}").font = font_title
+            start_matrix_title_row = 3
 
         roles_analysis = determine_roles_for_rival_team(profiles_data, players_data)
         matrix = roles_analysis['matrix']
@@ -313,25 +499,28 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         # ---------------------------------------------------------
         # BLOQUE A: MATRIZ DE EMPAREJAMIENTOS NxN
         # ---------------------------------------------------------
-        ws_team.cell(row=3, column=1, value=f"🎯 MATRIZ DE EMPAREJAMIENTOS {team_size}x{len(players_data)} ({ref_team_name} vs {t_name})  [🟢🟢 +2 Ideal | 🟢 +1 Favorable | 🟡 0 Parejo | 🟠 -1 Desfavorable | 🔴🔴 -2 Crítico]").font = font_section_title
+        ws_team.cell(row=start_matrix_title_row, column=1, value=f"🎯 MATRIZ DE EMPAREJAMIENTOS {team_size}x{len(players_data)} ({ref_team_name} vs {t_name})  [🟢🟢 +2 Ideal | 🟢 +1 Favorable | 🟡 0 Parejo | 🟠 -1 Desfavorable | 🔴🔴 -2 Crítico]").font = font_section_title
 
         headers_matrix = ["Jugador", "Arquetipo / Concepto", "Rol vs Rival"]
         for r_nick in rival_nicks:
             headers_matrix.append(f"vs {r_nick}")
         headers_matrix.append("Balance Net Score")
 
+        headers_matrix_row = start_matrix_title_row + 1
         for col_idx, h_text in enumerate(headers_matrix, 1):
-            c = ws_team.cell(row=4, column=col_idx, value=h_text)
+            c = ws_team.cell(row=headers_matrix_row, column=col_idx, value=h_text)
             c.font = font_header; c.fill = fill_matrix_header; c.alignment = align_center; c.border = border_header
 
-        m_row = 5
+        m_row = headers_matrix_row + 1
         for p_prof in our_players:
             alias = p_prof.get('alias') or p_prof.get('player_name')
+            fill_m_row = fill_zebra if m_row % 2 == 0 else fill_card_content
+
             c_name = ws_team.cell(row=m_row, column=1, value=alias)
-            c_name.font = font_bold; c_name.border = border_cell
+            c_name.font = font_bold; c_name.fill = fill_m_row; c_name.border = border_cell
 
             c_arch = ws_team.cell(row=m_row, column=2, value=p_prof.get('archetype', ''))
-            c_arch.font = font_faction; c_arch.border = border_cell
+            c_arch.font = font_faction; c_arch.fill = fill_m_row; c_arch.border = border_cell
 
             if alias in shields_names:
                 sh_idx = shields_names.index(alias) + 1
@@ -340,7 +529,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
                 sp_idx = spears_names.index(alias) + 1
                 role_label = f"⚔️ Lanza #{sp_idx}"
             c_role = ws_team.cell(row=m_row, column=3, value=role_label)
-            c_role.font = font_bold; c_role.alignment = align_center; c_role.border = border_cell
+            c_role.font = font_bold; c_role.fill = fill_m_row; c_role.alignment = align_center; c_role.border = border_cell
 
             col_eval = 4
             for r_nick in rival_nicks:
@@ -476,7 +665,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             for r_box in range(curr_rec_row, curr_rec_row + 6):
                 for c_box in range(1, len(headers_matrix) + 1):
                     cb = ws_team.cell(row=r_box, column=c_box)
-                    if not cb.fill.start_color.rgb:
+                    if cb.fill.fill_type is None:
                         cb.fill = fill_recommend_box
                     cb.border = border_cell
 
@@ -488,6 +677,8 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         last_match_num = team_size
         c_cf_label = ws_team.cell(row=curr_rec_row, column=1, value=f"⚡ Cruce {last_match_num} (Automático por descarte final):")
         c_cf_label.font = font_section_title
+        c_cf_label.fill = fill_recommend_box
+        c_cf_label.border = border_header
 
         # Determinar rival restante dinámicamente con COUNTIF
         rival_checks = []
@@ -551,10 +742,10 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             c_name.font = font_player_header; c_name.fill = fill_player_header; c_name.alignment = align_center; c_name.border = border_header
 
             c_fac = ws_team.cell(row=faction_row, column=col_idx, value=f"Facción: {faction}" if faction else "")
-            c_fac.font = font_faction; c_fac.alignment = align_center; c_fac.border = border_cell
+            c_fac.font = font_faction; c_fac.fill = fill_card_content; c_fac.alignment = align_center; c_fac.border = border_cell
 
             c_pts = ws_team.cell(row=points_row, column=col_idx, value=f"Total: {points}" if points else "")
-            c_pts.font = font_points; c_pts.alignment = align_center; c_pts.border = border_cell
+            c_pts.font = font_points; c_pts.fill = fill_card_content; c_pts.alignment = align_center; c_pts.border = border_cell
 
             c_link = ws_team.cell(row=link_row, column=col_idx)
             if yasb_link:
@@ -564,11 +755,11 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             else:
                 c_link.value = ""
                 c_link.font = font_normal
-            c_link.alignment = align_center; c_link.border = border_cell
+            c_link.fill = fill_card_content; c_link.alignment = align_center; c_link.border = border_cell
 
             full_list_text = "\n".join(list_lines) if list_lines else "Sin lista registrada"
             c_list = ws_team.cell(row=content_row, column=col_idx, value=full_list_text)
-            c_list.font = font_normal; c_list.alignment = align_top_left; c_list.border = border_cell
+            c_list.font = font_normal; c_list.fill = fill_card_content; c_list.alignment = align_top_left; c_list.border = border_cell
 
             col_letter = get_column_letter(col_idx)
             ws_team.column_dimensions[col_letter].width = 44
