@@ -6,6 +6,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.comments import Comment
+from openpyxl.formatting.rule import CellIsRule
 
 from src.config import OUTPUT_DIR
 from src.team_manager import (
@@ -497,7 +498,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         rival_nicks = [p.get('player_name', f'Rival {i+1}') for i, p in enumerate(players_data)]
 
         # ---------------------------------------------------------
-        # BLOQUE A: MATRIZ DE EMPAREJAMIENTOS NxN
+        # BLOQUE A: MATRIZ DE EMPAREJAMIENTOS NxN (TOTALMENTE DINÁMICA)
         # ---------------------------------------------------------
         ws_team.cell(row=start_matrix_title_row, column=1, value=f"🎯 MATRIZ DE EMPAREJAMIENTOS {team_size}x{len(players_data)} ({ref_team_name} vs {t_name})  [🟢🟢 +2 Ideal | 🟢 +1 Favorable | 🟡 0 Parejo | 🟠 -1 Desfavorable | 🔴🔴 -2 Crítico]").font = font_section_title
 
@@ -506,12 +507,47 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             headers_matrix.append(f"vs {r_nick}")
         headers_matrix.append("Balance Net Score")
 
+        first_rival_col = 4
+        last_rival_col = 3 + len(rival_nicks)
+        bal_col = last_rival_col + 1
+        first_rival_let = get_column_letter(first_rival_col)
+        last_rival_let = get_column_letter(last_rival_col)
+        bal_let = get_column_letter(bal_col)
+
+        # Columnas auxiliares ocultas para recálculo reactivo WTC
+        col_idx_def = bal_col + 1
+        col_rank_def = bal_col + 2
+        col_sc_def1 = bal_col + 3
+        col_metric_sp1 = bal_col + 4
+        col_rank_sp1 = bal_col + 5
+
+        let_idx_def = get_column_letter(col_idx_def)
+        let_rank_def = get_column_letter(col_rank_def)
+        let_sc_def1 = get_column_letter(col_sc_def1)
+        let_metric_sp1 = get_column_letter(col_metric_sp1)
+        let_rank_sp1 = get_column_letter(col_rank_sp1)
+
         headers_matrix_row = start_matrix_title_row + 1
         for col_idx, h_text in enumerate(headers_matrix, 1):
             c = ws_team.cell(row=headers_matrix_row, column=col_idx, value=h_text)
             c.font = font_header; c.fill = fill_matrix_header; c.alignment = align_center; c.border = border_header
 
-        m_row = headers_matrix_row + 1
+        start_m_row = headers_matrix_row + 1
+        end_m_row = headers_matrix_row + team_size
+
+        idx_def_range = f"${let_idx_def}${start_m_row}:${let_idx_def}${end_m_row}"
+        rank_def_range = f"${let_rank_def}${start_m_row}:${let_rank_def}${end_m_row}"
+        names_range = f"$A${start_m_row}:$A${end_m_row}"
+        headers_rivals_range = f"${first_rival_let}${headers_matrix_row}:${last_rival_let}${headers_matrix_row}"
+        matrix_data_range = f"${first_rival_let}${start_m_row}:${last_rival_let}${end_m_row}"
+        metric_sp1_range = f"${let_metric_sp1}${start_m_row}:${let_metric_sp1}${end_m_row}"
+        rank_sp1_range = f"${let_rank_sp1}${start_m_row}:${let_rank_sp1}${end_m_row}"
+
+        # Fila calculada de la celda del Defensor Rival de la Tanda 1 en el Bloque B
+        rec_start_row = end_m_row + 2
+        r_def_row_tanda1 = rec_start_row + 3
+
+        m_row = start_m_row
         for p_prof in our_players:
             alias = p_prof.get('alias') or p_prof.get('player_name')
             fill_m_row = fill_zebra if m_row % 2 == 0 else fill_card_content
@@ -522,59 +558,93 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             c_arch = ws_team.cell(row=m_row, column=2, value=p_prof.get('archetype', ''))
             c_arch.font = font_faction; c_arch.fill = fill_m_row; c_arch.border = border_cell
 
-            if alias in shields_names:
-                sh_idx = shields_names.index(alias) + 1
-                role_label = f"🛡️ Escudo #{sh_idx}"
-            else:
-                sp_idx = spears_names.index(alias) + 1
-                role_label = f"⚔️ Lanza #{sp_idx}"
-            c_role = ws_team.cell(row=m_row, column=3, value=role_label)
+            # FÓRMULA DINÁMICA DE ROL: Cambia automáticamente según el ranking defensivo
+            role_formula = f'=IF({let_rank_def}{m_row}<={num_shields}, "🛡️ Escudo #" & {let_rank_def}{m_row}, "⚔️ Lanza #" & ({let_rank_def}{m_row} - {num_shields}))'
+            c_role = ws_team.cell(row=m_row, column=3, value=role_formula)
             c_role.font = font_bold; c_role.fill = fill_m_row; c_role.alignment = align_center; c_role.border = border_cell
 
-            col_eval = 4
+            col_eval = first_rival_col
             for r_nick in rival_nicks:
                 eval_info = matrix.get(alias, {}).get(r_nick, {'score': 0, 'symbol': '🟡', 'reason': ''})
-                sc = eval_info['score']
-                sym = eval_info['symbol']
+                sc = int(eval_info['score'])
 
-                c_res = ws_team.cell(row=m_row, column=col_eval, value=f"{sym} ({sc:+d})")
+                # NÚMERO PURO: Permite edición manual y recálculo automático instantáneo
+                c_res = ws_team.cell(row=m_row, column=col_eval, value=sc)
+                c_res.number_format = '+0;-0;0'
                 c_res.alignment = align_center; c_res.border = border_cell
                 if eval_info.get('reason'):
                     c_res.comment = Comment(eval_info['reason'], "Matriz Táctica")
-                if sc == 2:
-                    c_res.fill = fill_p2; c_res.font = font_p2
-                elif sc == 1:
-                    c_res.fill = fill_p1; c_res.font = font_p1
-                elif sc == -1:
-                    c_res.fill = fill_m1; c_res.font = font_m1
-                elif sc == -2:
-                    c_res.fill = fill_m2; c_res.font = font_m2
-                else:
-                    c_res.fill = fill_c0; c_res.font = font_c0
                 col_eval += 1
 
-            net = net_scores.get(alias, 0)
-            c_bal = ws_team.cell(row=m_row, column=col_eval, value=f"{net:+d}")
+            # BALANCE NET SCORE DINÁMICO
+            bal_formula = f'=SUM({first_rival_let}{m_row}:{last_rival_let}{m_row})'
+            c_bal = ws_team.cell(row=m_row, column=bal_col, value=bal_formula)
+            c_bal.number_format = '+0;-0;0'
             c_bal.font = font_bold; c_bal.alignment = align_center; c_bal.border = border_cell
-            if net >= 3:
-                c_bal.fill = fill_p2; c_bal.font = font_p2
-            elif net > 0:
-                c_bal.fill = fill_p1; c_bal.font = font_p1
-            elif net <= -3:
-                c_bal.fill = fill_m2; c_bal.font = font_m2
-            elif net < 0:
-                c_bal.fill = fill_m1; c_bal.font = font_m1
-            else:
-                c_bal.fill = fill_c0; c_bal.font = font_c0
+
+            # COLUMNAS AUXILIARES DE CÁLCULO WTC
+            rival_row_range = f"{first_rival_let}{m_row}:{last_rival_let}{m_row}"
+            bal_cell_ref = f"{bal_let}{m_row}"
+
+            # 1) Índice defensivo: Pondera evitar -2 (peso 100k), -1 (10k), +2 (1k), premia 0 y balance
+            f_idx = f"=(COUNTIF({rival_row_range}, -2)*100000) + (COUNTIF({rival_row_range}, -1)*10000) + (COUNTIF({rival_row_range}, 2)*1000) - (COUNTIF({rival_row_range}, 0)*100) - {bal_cell_ref} + (ROW()*0.0001)"
+            ws_team.cell(row=m_row, column=col_idx_def, value=f_idx)
+
+            # 2) Ranking Escudo: 1 a S son Escudos, el resto son Lanzas
+            f_rank = f"=RANK({let_idx_def}{m_row}, {idx_def_range}, 1)"
+            ws_team.cell(row=m_row, column=col_rank_def, value=f_rank)
+
+            # 3) Score contra el defensor rival de Tanda 1
+            f_sc_def1 = f'=IF(B{r_def_row_tanda1}="", 0, INDEX({rival_row_range}, 1, MATCH("vs " & B{r_def_row_tanda1}, {headers_rivals_range}, 0)))'
+            ws_team.cell(row=m_row, column=col_sc_def1, value=f_sc_def1)
+
+            # 4) Métrica de idoneidad como Lanza para Tanda 1 (solo para quienes no sean Escudos)
+            f_metric_sp1 = f'=IF({let_rank_def}{m_row}>{num_shields}, ({let_sc_def1}{m_row}*1000) - {bal_cell_ref} + (ROW()*0.0001), -999999)'
+            ws_team.cell(row=m_row, column=col_metric_sp1, value=f_metric_sp1)
+
+            # 5) Ranking de lanzas para Tanda 1
+            f_rank_sp1 = f"=RANK({let_metric_sp1}{m_row}, {metric_sp1_range}, 0)"
+            ws_team.cell(row=m_row, column=col_rank_sp1, value=f_rank_sp1)
 
             m_row += 1
 
         matrix_end_row = m_row - 1
 
+        # Formato Condicional Nativo para la Matriz (-2 a +2)
+        matrix_cf_range = f"{first_rival_let}{start_m_row}:{last_rival_let}{end_m_row}"
+        rule_p2 = CellIsRule(operator='equal', formula=['2'], stopIfTrue=True, fill=fill_p2, font=font_p2)
+        rule_p1 = CellIsRule(operator='equal', formula=['1'], stopIfTrue=True, fill=fill_p1, font=font_p1)
+        rule_c0 = CellIsRule(operator='equal', formula=['0'], stopIfTrue=True, fill=fill_c0, font=font_c0)
+        rule_m1 = CellIsRule(operator='equal', formula=['-1'], stopIfTrue=True, fill=fill_m1, font=font_m1)
+        rule_m2 = CellIsRule(operator='equal', formula=['-2'], stopIfTrue=True, fill=fill_m2, font=font_m2)
+
+        ws_team.conditional_formatting.add(matrix_cf_range, rule_p2)
+        ws_team.conditional_formatting.add(matrix_cf_range, rule_p1)
+        ws_team.conditional_formatting.add(matrix_cf_range, rule_c0)
+        ws_team.conditional_formatting.add(matrix_cf_range, rule_m1)
+        ws_team.conditional_formatting.add(matrix_cf_range, rule_m2)
+
+        # Formato Condicional para Balance Net Score
+        balance_cf_range = f"{bal_let}{start_m_row}:{bal_let}{end_m_row}"
+        rule_bal_p2 = CellIsRule(operator='greaterThanOrEqual', formula=['3'], stopIfTrue=True, fill=fill_p2, font=font_p2)
+        rule_bal_p1 = CellIsRule(operator='greaterThan', formula=['0'], stopIfTrue=True, fill=fill_p1, font=font_p1)
+        rule_bal_c0 = CellIsRule(operator='equal', formula=['0'], stopIfTrue=True, fill=fill_c0, font=font_c0)
+        rule_bal_m1 = CellIsRule(operator='greaterThanOrEqual', formula=['-2'], stopIfTrue=True, fill=fill_m1, font=font_m1)
+        rule_bal_m2 = CellIsRule(operator='lessThanOrEqual', formula=['-3'], stopIfTrue=True, fill=fill_m2, font=font_m2)
+
+        ws_team.conditional_formatting.add(balance_cf_range, rule_bal_p2)
+        ws_team.conditional_formatting.add(balance_cf_range, rule_bal_p1)
+        ws_team.conditional_formatting.add(balance_cf_range, rule_bal_c0)
+        ws_team.conditional_formatting.add(balance_cf_range, rule_bal_m1)
+        ws_team.conditional_formatting.add(balance_cf_range, rule_bal_m2)
+
+        # Ocultar columnas auxiliares
+        for c_aux in range(col_idx_def, col_rank_sp1 + 1):
+            ws_team.column_dimensions[get_column_letter(c_aux)].hidden = True
+
         # ---------------------------------------------------------
-        # BLOQUE B: ASISTENTE DE PAIRING DINÁMICO WTC
+        # BLOQUE B: ASISTENTE DE PAIRING DINÁMICO WTC (PANEL REACTIVO)
         # ---------------------------------------------------------
-        rec_start_row = matrix_end_row + 2
         ws_team.cell(row=rec_start_row, column=1, value="🎛️ ASISTENTE DE PAIRING EN MESA (PANEL DE CONTROL WTC)").font = font_section_title
 
         curr_rec_row = rec_start_row + 1
@@ -583,7 +653,8 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
         dv_rivals = DataValidation(type="list", formula1=formula_rivales, allow_blank=False)
         ws_team.add_data_validation(dv_rivals)
 
-        formula_spears = '"' + ",".join(spears_names) + '"' if spears_names else '""'
+        our_player_names = [p.get('alias') or p.get('player_name') for p in our_players]
+        formula_spears = '"' + ",".join(our_player_names) + '"' if our_player_names else '""'
         dv_spears = DataValidation(type="list", formula1=formula_spears, allow_blank=False)
         ws_team.add_data_validation(dv_spears)
 
@@ -604,7 +675,11 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             c_th.font = font_header; c_th.fill = fill_header_k
 
             ws_team.cell(row=curr_rec_row + 1, column=1, value=f"[OFERTA {sh_num}A] Su Defensor #{sh_num} -> Nuestras Lanzas").font = font_bold
-            ws_team.cell(row=curr_rec_row + 1, column=3, value=f"[OFERTA {sh_num}B] Nuestro Escudo #{sh_num} ({sh_name}) -> Sus Atacantes").font = font_bold
+            
+            # Nombre de Escudo dinámico por fórmula
+            formula_oferta_b = f'="[OFERTA {sh_num}B] Nuestro Escudo #{sh_num} (" & INDEX({names_range}, MATCH({sh_num}, {rank_def_range}, 0)) & ") -> Sus Atacantes"'
+            c_of_b = ws_team.cell(row=curr_rec_row + 1, column=3, value=formula_oferta_b)
+            c_of_b.font = font_bold
 
             r_def_default = rival_nicks[k * 2] if (k * 2) < len(rival_nicks) else (rival_nicks[0] if rival_nicks else "")
             r_atk1_default = rival_nicks[k * 2 + 1] if (k * 2 + 1) < len(rival_nicks) else r_def_default
@@ -616,7 +691,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             dv_rivals.add(c_r_def)
             picked_rival_cell_refs.append(f"B{r_def_row}")
 
-            ws_team.cell(row=r_def_row, column=3, value=f"• Atacante Rival #{sh_num}A para {sh_name}:").font = font_interactive
+            ws_team.cell(row=r_def_row, column=3, value=f"• Atacante Rival #{sh_num}A:").font = font_interactive
             c_r_atk1 = ws_team.cell(row=r_def_row, column=4, value=r_atk1_default)
             c_r_atk1.font = font_bold; c_r_atk1.fill = fill_interactive_box; c_r_atk1.alignment = align_center; c_r_atk1.border = border_header
             dv_rivals.add(c_r_atk1)
@@ -626,7 +701,8 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             ws_team.cell(row=rec_spears_row, column=1, value=f"💡 Nuestras Lanzas recomendadas Tanda {sh_num}:").font = font_interactive
             
             if k == 0:
-                spears_formula = build_spears_formula(f"B{r_def_row}", rival_best_spears)
+                # Dinámico: Top 2 Lanzas con mayor afinidad contra el Defensor Rival elegido
+                spears_formula = f'="⚔️ " & INDEX({names_range}, MATCH(1, {rank_sp1_range}, 0)) & " y " & INDEX({names_range}, MATCH(2, {rank_sp1_range}, 0))'
             else:
                 prev_pick = picked_spear_cell_refs[-1]
                 if len(spears_names) == 3:
@@ -637,7 +713,7 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             c_rec_sp = ws_team.cell(row=rec_spears_row, column=2, value=spears_formula)
             c_rec_sp.font = font_p1; c_rec_sp.fill = fill_p1; c_rec_sp.alignment = align_left; c_rec_sp.border = border_header
 
-            ws_team.cell(row=rec_spears_row, column=3, value=f"• Atacante Rival #{sh_num}B para {sh_name}:").font = font_interactive
+            ws_team.cell(row=rec_spears_row, column=3, value=f"• Atacante Rival #{sh_num}B:").font = font_interactive
             c_r_atk2 = ws_team.cell(row=rec_spears_row, column=4, value=r_atk2_default)
             c_r_atk2.font = font_bold; c_r_atk2.fill = fill_interactive_box; c_r_atk2.alignment = align_center; c_r_atk2.border = border_header
             dv_rivals.add(c_r_atk2)
@@ -650,13 +726,34 @@ def export_to_excel(event_id: str, event_data: dict, output_filename: str = None
             dv_spears.add(c_sp_pick)
             picked_spear_cell_refs.append(f"B{pick_row}")
 
-            ws_team.cell(row=pick_row, column=3, value=f"💡 Recomendación para {sh_name}:").font = font_interactive
-            rec_shield_formula = build_shield_rec_formula(sh_name, f"D{r_def_row}", f"D{rec_spears_row}", matrix.get(sh_name, {}), rival_nicks)
+            # Etiqueta dinámica con el nombre del jugador que ostenta este Escudo
+            formula_label_sh = f'="💡 Recomendación para " & INDEX({names_range}, MATCH({sh_num}, {rank_def_range}, 0)) & " (Escudo #{sh_num}):"'
+            ws_team.cell(row=pick_row, column=3, value=formula_label_sh).font = font_interactive
+
+            # Celdas auxiliares para buscar en tiempo real los scores del Escudo #sh_num contra Atacante A y B
+            f_sc_atkA = f'=IF(D{r_def_row}="", 0, INDEX({matrix_data_range}, MATCH({sh_num}, {rank_def_range}, 0), MATCH("vs " & D{r_def_row}, {headers_rivals_range}, 0)))'
+            f_sc_atkB = f'=IF(D{rec_spears_row}="", 0, INDEX({matrix_data_range}, MATCH({sh_num}, {rank_def_range}, 0), MATCH("vs " & D{rec_spears_row}, {headers_rivals_range}, 0)))'
+            ws_team.cell(row=pick_row, column=col_idx_def, value=f_sc_atkA)
+            ws_team.cell(row=pick_row, column=col_rank_def, value=f_sc_atkB)
+
+            ref_scA = f"{let_idx_def}{pick_row}"
+            ref_scB = f"{let_rank_def}{pick_row}"
+
+            # Fórmula dinámica de recomendación para el Escudo (reacciona en tiempo real a cambios en la matriz)
+            rec_shield_formula = (
+                f'=IF(OR(D{r_def_row}="", D{rec_spears_row}=""), "Esperando asignación", '
+                f'IF(AND({ref_scA}=-2, {ref_scB}<>-2), "⛔ ¡EVITAR (-2) " & D{r_def_row} & "! -> Elegir: " & D{rec_spears_row}, '
+                f'IF(AND({ref_scB}=-2, {ref_scA}<>-2), "⛔ ¡EVITAR (-2) " & D{rec_spears_row} & "! -> Elegir: " & D{r_def_row}, '
+                f'IF({ref_scA}>{ref_scB}, "🟢 Preferir: " & D{r_def_row} & " (" & IF({ref_scA}>0, "+"&{ref_scA}, ""&{ref_scA}) & " vs " & IF({ref_scB}>0, "+"&{ref_scB}, ""&{ref_scB}) & ")", '
+                f'IF({ref_scB}>{ref_scA}, "🟢 Preferir: " & D{rec_spears_row} & " (" & IF({ref_scB}>0, "+"&{ref_scB}, ""&{ref_scB}) & " vs " & IF({ref_scA}>0, "+"&{ref_scA}, ""&{ref_scA}) & ")", '
+                f'"🟡 Parejos: cualquiera (" & IF({ref_scA}>0, "+"&{ref_scA}, ""&{ref_scA}) & ")")))))'
+            )
             c_rec_sh = ws_team.cell(row=pick_row, column=4, value=rec_shield_formula)
             c_rec_sh.font = font_p1; c_rec_sh.fill = fill_p1; c_rec_sh.alignment = align_left; c_rec_sh.border = border_header
 
             final_atk_row = curr_rec_row + 5
-            ws_team.cell(row=final_atk_row, column=3, value=f"{step3_emoji} Atacante Rival aceptado para {sh_name}:").font = font_interactive
+            formula_label_final = f'="{step3_emoji} Atacante aceptado para " & INDEX({names_range}, MATCH({sh_num}, {rank_def_range}, 0)) & ":"'
+            ws_team.cell(row=final_atk_row, column=3, value=formula_label_final).font = font_interactive
             c_atk_final = ws_team.cell(row=final_atk_row, column=4, value=r_atk1_default)
             c_atk_final.font = font_bold; c_atk_final.fill = fill_interactive_box; c_atk_final.alignment = align_center; c_atk_final.border = border_header
             dv_rivals.add(c_atk_final)
